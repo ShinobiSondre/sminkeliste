@@ -18,6 +18,12 @@
     }
     return r;
   }
+  // Words around a product name that aren't part of it (buttons, labels, ratings).
+  var JUNK = /^(gratis frakt|fri frakt|medlem|logg inn|store logo|logo|kjøp|legg i|gå til|se alle|vis|normale varer|flere varianter|nyhet|kampanje)/i;
+  function clean(s) {
+    return (s || '').replace(/(Bilde av|Gå til produktet|Legg til i ønskelisten|Legg i handlekurven|OVERVÅKE|Flere varianter|Kjøp|På nettlager.*$|Hent i \d+ apotek.*$|\(\d+\)|\d,\d \(\d+\))/gi, ' ')
+      .replace(/^MERKE:\s*/i, '').replace(/\s+/g, ' ').trim();
+  }
   var out = [], seen = {};
   function add(n, p, o, u, i) {
     if (!n || !p || !u || seen[u]) return;
@@ -51,7 +57,8 @@
     var t = txt(card);
     if (!img || t.length > 700) continue;
     var href = a.href;
-    if (!href || href.indexOf('http') !== 0 || seen[href] || /\/(sok|search|kategori|category|merker|brands?)\b/i.test(href)) continue;
+    if (!href || href.indexOf('http') !== 0 || seen[href] || /\/(sok|soek|search|s|kategori|category|merker|vare-merker|brands?|kampanjetilbud|kampanje)(\/|\?|$)/i.test(href.replace(/^https?:\/\/[^/]+/, ''))) continue;
+    if (href.replace(/^https?:\/\/[^/]+/, '').replace(/[?#].*$/, '').length < 4) continue;
     var oldEl = card.querySelector('del, s, strike, [class*="old" i], [class*="before" i], [class*="original" i], [class*="compare" i], [class*="regular" i], [class*="value" i]');
     var oldP = oldEl ? prices(txt(oldEl))[0] : null;
     var priceEls = card.querySelectorAll('[class*="price" i]');
@@ -60,11 +67,16 @@
     if (!ps.length) ps = prices(t);
     ps = ps.filter(function (x) { return x !== oldP; });
     if (!ps.length) continue;
-    var nameEl = card.querySelector('[class*="name" i], [class*="title" i], h2, h3, h4');
-    var name = (a.getAttribute('aria-label') || a.getAttribute('title') || txt(nameEl) || img.getAttribute('alt') || '').trim();
-    var brandEl = card.querySelector('[class*="brand" i]'), brand = txt(brandEl);
-    if (brand && brand.length < 40 && name.toLowerCase().indexOf(brand.toLowerCase()) < 0) name = brand + ' ' + name;
-    if (name.length < 4 || name.length > 160) continue;
+    var nameEl = card.querySelector('[class*="productname" i], [class*="product-name" i], [class*="product__name" i], [class*="name" i]:not([class*="brand" i]), [class*="title" i], h2, h3, h4');
+    var cands = [txt(nameEl), img.getAttribute('title'), a.getAttribute('title'), a.getAttribute('aria-label'), img.getAttribute('alt')]
+      .map(clean).filter(function (x) { return x && x.length >= 4 && !JUNK.test(x); });
+    var name = cands[0] || '';
+    var brandEl = card.querySelector('[class*="brand" i]'), brand = clean(txt(brandEl));
+    if (brand && brand.length < 40 && !JUNK.test(brand) && name.toLowerCase().indexOf(brand.toLowerCase()) < 0) name = brand + ' ' + name;
+    // A shade or variant shown on its own line belongs to the name.
+    var variant = clean(txt(card.querySelector('[class*="variant" i], [class*="shade" i], [class*="nyanse" i]')));
+    if (variant && variant.length < 40 && !/\d\s*kr/i.test(variant) && name.toLowerCase().indexOf(variant.toLowerCase()) < 0) name = name + ' ' + variant;
+    if (name.length < 6 || name.length > 160 || name.split(' ').length < 2) continue;
     var src = img.currentSrc || img.getAttribute('src') || img.getAttribute('data-src') || '';
     if (src.indexOf('http') !== 0) { var ss = (img.getAttribute('srcset') || img.getAttribute('data-srcset') || '').split(' ')[0]; if (ss) src = ss; }
     if (src.indexOf('//') === 0) src = 'https:' + src;

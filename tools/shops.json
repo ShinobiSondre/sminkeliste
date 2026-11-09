@@ -1,46 +1,12 @@
 [
- {
-  "name": "Kicks",
-  "url": "https://www.kicks.no/sok?q="
- },
- {
-  "name": "Bangerhead",
-  "url": "https://www.bangerhead.no/sok?q="
- },
- {
-  "name": "Fredrik & Louisa",
-  "url": "https://www.fredrikoglouisa.no/search?q="
- },
- {
-  "name": "Beautycos",
-  "url": "https://www.beautycos.no/search?q="
- },
- {
-  "name": "Apotek 1",
-  "url": "https://www.apotek1.no/sok?q="
- },
- {
-  "name": "Vitusapotek",
-  "url": "https://www.vitusapotek.no/sok?q="
- },
- {
-  "name": "Parfym.no",
-  "url": "https://www.parfym.no/search?q="
- },
- {
-  "name": "Normal",
-  "url": "https://www.normal.no/search?q="
- },
- {
-  "name": "Farmasiet",
-  "url": "https://www.farmasiet.no/sok?q="
- },
- {
-  "name": "Sminkeriet",
-  "url": "https://sminkeriet.no/search?q="
- },
- {
-  "name": "Boozt",
-  "url": "https://www.boozt.com/no/no/search/result?search_keyword="
- }
+  {"name": "Kicks", "url": "https://www.kicks.no/sok?search-query="},
+  {"name": "Fredrik & Louisa", "url": "https://fredrikoglouisa.no/sokeresultater/?searchterm="},
+  {"name": "Apotek 1", "url": "https://www.apotek1.no/soek/{q}?searchTerm="},
+  {"name": "Parfym.no", "url": "https://www.parfym.no/s?q="},
+  {"name": "Blivakker", "url": "https://www.blivakker.no/sok?q="},
+  {"name": "Blivakker2", "url": "https://www.blivakker.no/search?q="},
+  {"name": "Vitusapotek", "url": "https://www.vitusapotek.no/sok?q="},
+  {"name": "Beautycos", "url": "https://www.beautycos.no/search?q="},
+  {"name": "Sminkeriet", "url": "https://sminkeriet.no/sok?q="},
+  {"name": "Bangerhead", "url": "https://www.bangerhead.no/search?q="}
 ]
