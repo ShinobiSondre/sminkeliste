@@ -1,25 +1,25 @@
-# Probe 2: what exactly the promising shops put in their pages.
-import json, re, sys, urllib.request, urllib.parse
+# Probe 3: real product data from the shops that looked readable (Boots, Vita, Blush/NordicFeel).
+import json, re, urllib.request, urllib.parse
 UA = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36"
-q = urllib.parse.quote("maybelline mascara")
-def get(u):
+Q = "maybelline mascara"; q = urllib.parse.quote(Q)
+def req(u, data=None, ctype=None):
+    h = {"User-Agent": UA, "Accept": "text/html,application/json", "Accept-Language": "nb-NO"}
+    if ctype: h["Content-Type"] = ctype
     try:
-        r = urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": UA, "Accept": "text/html,application/json", "Accept-Language": "nb-NO"}), timeout=25)
+        r = urllib.request.urlopen(urllib.request.Request(u, data=data, headers=h), timeout=25)
         return r.status, r.read().decode("utf-8", "replace")
     except Exception as e:
         return getattr(e, "code", str(e)[:60]), (e.read().decode("utf-8","replace") if hasattr(e, "read") else "")
-def note(t, s): print(f"::notice title={t}::{s[:1800]}")
-for name, u in {"vita": f"https://www.vita.no/search?q={q}", "nordicfeel": f"https://www.nordicfeel.com/no/search?q={q}",
-                "kicks": f"https://www.kicks.no/search?q={q}", "apotek1": f"https://www.apotek1.no/sok?q={q}", "boots": f"https://www.boots.no/sok?q={q}",
-                "bangerhead": f"https://www.bangerhead.no/sok?q={q}", "lyko": f"https://lyko.com/no/search?q={q}"}.items():
-    code, b = get(u)
-    note(f"{name} status", f"{code} len={len(b)}")
-    for i, m in enumerate(re.findall(r'<script[^>]*ld\+json[^>]*>(.*?)</script>', b, re.S)[:3]):
-        note(f"{name} ldjson{i}", m.strip()[:1500])
-    for key in ["esales.apptus.cloud", "elevate", "clusterId", "cluster", "loop54", "algolia", "hello-retail", "helloretail", "searchApi", "apiUrl", "/api/"]:
-        for m in re.finditer(re.escape(key), b, re.I):
-            note(f"{name} ctx {key}", b[max(0, m.start()-150): m.end()+200].replace("\n", " "))
-            break
-    # Product-like snippets around a price
-    for m in list(re.finditer(r'(?i)maybelline', b))[:3]:
-        note(f"{name} near", b[max(0, m.start()-200): m.end()+300].replace("\n", " "))
+def note(t, s): print(f"::notice title={t}::{str(s)[:1900]}")
+
+for path in ["/search", "/v3/search"]:
+    c, b = req("https://boots-no-prod.54proxy.com" + path, json.dumps({"query": Q, "resultsOptions": {"take": 2}}).encode(), "application/json")
+    note(f"boots loop54 {path} {c}", b[:1900])
+
+c, b = req(f"https://www.vita.no/search?q={q}")
+for i, m in enumerate(list(re.finditer(r'"price"', b))[:2]):
+    note(f"vita price ctx {i}", b[max(0, m.start()-900): m.end()+300].replace("\n", " "))
+
+c, b = req(f"https://www.nordicfeel.com/no/search?q={q}")
+for i, m in enumerate(list(re.finditer(r'(?i)sky high|lash sensational|colossal', b))[:2]):
+    note(f"nordicfeel card {i}", b[max(0, m.start()-900): m.end()+700].replace("\n", " "))
