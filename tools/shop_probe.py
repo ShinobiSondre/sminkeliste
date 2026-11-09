@@ -1,29 +1,25 @@
-# Probe: which beauty web shops answer a search with readable products and prices?
+# Probe 2: what exactly the promising shops put in their pages.
 import json, re, sys, urllib.request, urllib.parse
 UA = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36"
-q = urllib.parse.quote(sys.argv[1] if len(sys.argv) > 1 else "maybelline mascara")
-urls = {
-  "lyko": f"https://lyko.com/no/search?q={q}",
-  "kicks": f"https://www.kicks.no/search?q={q}",
-  "vita": f"https://www.vita.no/sok?q={q}",
-  "vita2": f"https://www.vita.no/search?q={q}",
-  "blush": f"https://www.blush.no/search?q={q}",
-  "bangerhead": f"https://www.bangerhead.no/sok?q={q}",
-  "normal": f"https://www.normal.no/search?q={q}",
-  "apotek1": f"https://www.apotek1.no/sok?q={q}",
-  "vitus": f"https://www.vitusapotek.no/sok?q={q}",
-  "boots": f"https://www.boots.no/sok?q={q}",
-  "prisjakt": f"https://www.prisjakt.no/search?search={q}",
-  "lyko_api": f"https://lyko.com/api/search?q={q}&market=no",
-}
-for name, u in urls.items():
+q = urllib.parse.quote("maybelline mascara")
+def get(u):
     try:
         r = urllib.request.urlopen(urllib.request.Request(u, headers={"User-Agent": UA, "Accept": "text/html,application/json", "Accept-Language": "nb-NO"}), timeout=25)
-        b = r.read().decode("utf-8", "replace"); code = r.status; final = r.geturl()
+        return r.status, r.read().decode("utf-8", "replace")
     except Exception as e:
-        b = getattr(e, "read", lambda: b"")().decode("utf-8", "replace") if hasattr(e, "read") else ""; code = getattr(e, "code", str(e)[:80]); final = u
-    hints = [h for h in ["__NEXT_DATA__", "__NUXT__", "window.__INITIAL_STATE__", "algolia", "voyado", "elevate", "apptus", "klevu", "ld+json", "\"price\"", "\"Price\"", "kr", "graphql", "searchspring", "hello retail", "loop54"] if h.lower() in b.lower()]
-    prices = re.findall(r'"(?:price|salePrice|currentPrice|sellingPrice)"\s*:\s*"?([0-9]+[.,]?[0-9]*)', b)[:6]
-    names = re.findall(r'"(?:name|title|productName)"\s*:\s*"([^"]{6,70})"', b)[:6]
-    apis = sorted(set(re.findall(r'https?://[a-z0-9.-]*(?:api|search|elevate|apptus|algolia|voyado|loop54|klevu)[a-z0-9.-]*\.[a-z]{2,}[^"\'\s<>]{0,60}', b)))[:6]
-    print(f"::notice title={name} {code} {len(b)}b::final={final} hints={hints} prices={prices} names={names} apis={apis}")
+        return getattr(e, "code", str(e)[:60]), (e.read().decode("utf-8","replace") if hasattr(e, "read") else "")
+def note(t, s): print(f"::notice title={t}::{s[:1800]}")
+for name, u in {"vita": f"https://www.vita.no/search?q={q}", "nordicfeel": f"https://www.nordicfeel.com/no/search?q={q}",
+                "kicks": f"https://www.kicks.no/search?q={q}", "apotek1": f"https://www.apotek1.no/sok?q={q}", "boots": f"https://www.boots.no/sok?q={q}",
+                "bangerhead": f"https://www.bangerhead.no/sok?q={q}", "lyko": f"https://lyko.com/no/search?q={q}"}.items():
+    code, b = get(u)
+    note(f"{name} status", f"{code} len={len(b)}")
+    for i, m in enumerate(re.findall(r'<script[^>]*ld\+json[^>]*>(.*?)</script>', b, re.S)[:3]):
+        note(f"{name} ldjson{i}", m.strip()[:1500])
+    for key in ["esales.apptus.cloud", "elevate", "clusterId", "cluster", "loop54", "algolia", "hello-retail", "helloretail", "searchApi", "apiUrl", "/api/"]:
+        for m in re.finditer(re.escape(key), b, re.I):
+            note(f"{name} ctx {key}", b[max(0, m.start()-150): m.end()+200].replace("\n", " "))
+            break
+    # Product-like snippets around a price
+    for m in list(re.finditer(r'(?i)maybelline', b))[:3]:
+        note(f"{name} near", b[max(0, m.start()-200): m.end()+300].replace("\n", " "))
