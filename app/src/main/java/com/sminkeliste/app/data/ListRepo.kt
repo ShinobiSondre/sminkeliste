@@ -11,7 +11,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
-/** One product on a list: "Maybelline Sky High mascara", with an optional shade or note ("nyanse 120"). */
+/** The exact product picked for a list item (from a web shop's range), with its picture. */
+data class Exact(val name: String, val image: String?, val url: String, val shop: String, val price: Double)
+
+/** One product on a list: "Mascara", or exactly "Maybelline Lash Sensational Sky High Mascara", with an optional shade or note. */
 data class Item(
     val id: String,
     val name: String,
@@ -19,7 +22,11 @@ data class Item(
     val added: Long = System.currentTimeMillis(),
     val note: String = "",
     val category: String? = Parse.categoryOf(name)?.key,
-)
+    val exact: Exact? = null,
+) {
+    /** What deals, prices and alerts look for: the exact product if one is picked. */
+    val searchName: String get() = exact?.name ?: name
+}
 
 data class BeautyList(val id: String, val name: String)
 
@@ -58,8 +65,12 @@ object ListRepo {
                 val a = l.optJSONArray("items") ?: JSONArray()
                 for (j in 0 until a.length()) {
                     val x = a.optJSONObject(j) ?: continue
+                    val e = x.optJSONObject("exact")?.let { o ->
+                        Exact(o.optString("name"), o.optString("image").takeIf { it.startsWith("http") }, o.optString("url"),
+                            o.optString("shop"), o.optDouble("price", 0.0))
+                    }?.takeIf { it.name.isNotBlank() }
                     its += Item(x.optString("id"), x.optString("name"), x.optBoolean("checked"), x.optLong("added"),
-                        x.optString("note"), x.optString("cat").takeIf { it.isNotBlank() } ?: Parse.categoryOf(x.optString("name"))?.key)
+                        x.optString("note"), x.optString("cat").takeIf { it.isNotBlank() } ?: Parse.categoryOf(x.optString("name"))?.key, e)
                 }
                 byList[meta.id] = its
             }
@@ -83,7 +94,9 @@ object ListRepo {
             val its = JSONArray()
             byList[meta.id].orEmpty().forEach {
                 its.put(JSONObject().put("id", it.id).put("name", it.name).put("checked", it.checked).put("added", it.added)
-                    .put("note", it.note).put("cat", it.category ?: ""))
+                    .put("note", it.note).put("cat", it.category ?: "")
+                    .put("exact", it.exact?.let { e -> JSONObject().put("name", e.name).put("image", e.image ?: "").put("url", e.url)
+                        .put("shop", e.shop).put("price", e.price) } ?: JSONObject.NULL))
             }
             arr.put(JSONObject().put("id", meta.id).put("name", meta.name).put("items", its))
         }
@@ -137,7 +150,7 @@ object ListRepo {
         save()
     }
 
-    fun has(name: String): Boolean = open.any { it.name.equals(name.trim(), true) }
+    fun has(name: String): Boolean = open.any { it.name.equals(name.trim(), true) || it.searchName.equals(name.trim(), true) }
 
     private fun find(id: String): Pair<SnapshotStateList<Item>, Int>? {
         for (l in byList.values) { val i = l.indexOfFirst { it.id == id }; if (i >= 0) return l to i }
@@ -152,6 +165,24 @@ object ListRepo {
         val (l, i) = find(id) ?: return
         if (name.isBlank()) return
         l[i] = l[i].copy(name = name.trim(), note = note.trim(), category = category)
+        save()
+    }
+
+    /** Picks (or clears, with null) the exact product. Deal alerts move along to the exact product. */
+    fun setExact(id: String, exact: Exact?) {
+        val (l, i) = find(id) ?: return
+        val before = l[i].searchName
+        l[i] = l[i].copy(exact = exact, category = l[i].category ?: exact?.let { Parse.categoryOf(it.name)?.key })
+        val after = l[i].searchName
+        if (before != after && Alerts.isFollowed(before)) { Alerts.unfollow(app, before); Alerts.follow(app, after) }
+        save()
+    }
+
+    /** Adds an exact product straight from a search or an AI suggestion. */
+    fun addExact(exact: Exact, listId: String = currentId) {
+        val target = byList.getOrPut(listId) { mutableStateListOf() }
+        if (target.none { it.searchName.equals(exact.name, true) && !it.checked })
+            target.add(0, Item(UUID.randomUUID().toString(), exact.name, exact = exact, category = Parse.categoryOf(exact.name)?.key))
         save()
     }
 

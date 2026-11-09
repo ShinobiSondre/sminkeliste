@@ -43,19 +43,40 @@ object WebPrices {
         synchronized(busy) { if (!busy.add(term)) return }
         try {
             gate.withPermit {
-                val all = coroutineScope {
-                    listOf(
-                        async { runCatching { vita(term) }.getOrDefault(emptyList()) },
-                        async { runCatching { blush(term) }.getOrDefault(emptyList()) },
-                        async { runCatching { boots(term) }.getOrDefault(emptyList()) },
-                    ).map { it.await() }.flatten()
-                }
-                found[term] = Parse.matchWeb(term, all)
+                found[term] = Parse.matchWeb(term, all(term))
                 at[term] = System.currentTimeMillis()
             }
         } finally {
             synchronized(busy) { busy.remove(term) }
         }
+    }
+
+    /** Everything the three shops' searches return for [term]. */
+    private suspend fun all(term: String): List<WebPrice> = coroutineScope {
+        listOf(
+            async { runCatching { vita(term) }.getOrDefault(emptyList()) },
+            async { runCatching { blush(term) }.getOrDefault(emptyList()) },
+            async { runCatching { boots(term) }.getOrDefault(emptyList()) },
+        ).map { it.await() }.flatten()
+    }
+
+    /** Online prices for one product, without touching the screen's state (for the background alert check). */
+    suspend fun fetch(name: String): List<WebPrice> = Parse.matchWeb(key(name), all(key(name)), limit = 10)
+
+    /**
+     * Products for the "pick the exact product" search: the shops' own results (makeup only), the same
+     * product from several shops shown once, with its cheapest price.
+     */
+    suspend fun search(query: String): List<Pair<WebPrice, List<WebPrice>>> {
+        val term = key(query)
+        if (term.isBlank()) return emptyList()
+        val got = all(term).filter { Parse.isMakeup(it.name) }
+        val matched = Parse.matchWeb(term, got, limit = 60)
+        val list = matched.ifEmpty { got }
+        return list.groupBy { Parse.productKey(it.name) }.values
+            .map { same -> same.minBy { it.price } to same.sortedBy { it.price } }
+            .sortedBy { (best, _) -> list.indexOf(best) }
+            .take(40)
     }
 
     private suspend fun vita(term: String) =

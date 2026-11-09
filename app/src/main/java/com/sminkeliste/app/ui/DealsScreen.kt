@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -98,11 +100,10 @@ fun DealsScreen() {
                 Modifier.padding(horizontal = 16.dp, vertical = 8.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        // ---- your list ----
-        item { Title(tr("From your lists", "Fra listene dine")) }
-        if (mine.isEmpty()) item {
-            Text(if (ListRepo.open.isEmpty()) tr("Add makeup to a list to see its deals here.", "Legg sminke på en liste for å se tilbudene her.")
-                else tr("Nothing from your lists is on sale near you right now.", "Ingenting fra listene dine er på tilbud nær deg akkurat nå."),
+        // ---- your list: shops first, online underneath ----
+        item { Title(tr("Your lists – shops and online", "Listene dine – butikk og nett")) }
+        if (ListRepo.open.isEmpty()) item {
+            Text(tr("Add makeup to a list to see where it's cheapest here.", "Legg sminke på en liste for å se hvor den er billigst her."),
                 Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
         }
         val best = Deals.bestStores().firstOrNull()
@@ -113,21 +114,20 @@ fun DealsScreen() {
                     Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
             }
         }
-        mine.forEach { d ->
-            item(key = "i-${d.item}") {
-                Text(d.item, Modifier.padding(start = 20.dp, top = 10.dp, bottom = 4.dp), fontWeight = FontWeight.Bold)
-            }
-            items(d.offers.take(3), key = { "i-${d.item}-${it.id}" }) { OfferRow(it, Modifier.padding(horizontal = 12.dp, vertical = 3.dp)) }
-            item(key = "w-${d.item}") { OnlinePrices(d.item, Modifier.padding(start = 20.dp, end = 16.dp, top = 6.dp, bottom = 6.dp)) }
-        }
-
-        val noDeals = ListRepo.open.filter { i -> mine.none { it.item.equals(i.name, true) } }.distinctBy { it.name.lowercase() }
-        if (noDeals.isNotEmpty()) {
-            item { Title(tr("Not on sale in shops – online prices", "Ikke på tilbud i butikk – nettpriser")) }
-            items(noDeals, key = { "n-${it.id}" }) { i ->
-                Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
-                    Text(i.name, fontWeight = FontWeight.Bold)
-                    OnlinePrices(i.name, Modifier.padding(top = 4.dp))
+        // Items with a shop deal first.
+        val open = ListRepo.open.distinctBy { it.searchName.lowercase() }.sortedByDescending { Deals.forItem(it.name).isNotEmpty() }
+        items(open, key = { "i-${it.id}" }) { i ->
+            Surface(onClick = { ItemUi.openId = i.id }, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp).animateItem(),
+                shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+                Column(Modifier.padding(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ProductThumb(i.exact?.image, Parse.categoryByKey(i.category)?.emoji ?: "💄", 36)
+                        Spacer(Modifier.width(10.dp))
+                        Text(i.exact?.name ?: i.name, Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                        FollowBell(i.searchName)
+                    }
+                    Spacer(Modifier.size(6.dp))
+                    WhereToBuy(i.searchName, i.name, max = 5)
                 }
             }
         }
@@ -164,7 +164,7 @@ fun DealsScreen() {
         }
 
         // ---- browse ----
-        item { Title(tr("All makeup & skincare deals (${Deals.beauty.size})", "Alle tilbud på sminke og hudpleie (${Deals.beauty.size})")) }
+        item { Title(tr("All makeup deals in shops (${Deals.beauty.size})", "Alle sminketilbud i butikker (${Deals.beauty.size})")) }
         item {
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { FilterChip(selected = cat == null, onClick = { cat = null }, label = { Text(tr("All", "Alle")) }, shape = RoundedCornerShape(50)) }
@@ -178,8 +178,10 @@ fun DealsScreen() {
             Text(tr("No deals found in the flyers near you right now.", "Fant ingen tilbud i tilbudsavisene nær deg akkurat nå."),
                 Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
         }
-        items(browse.take(60), key = { "b-${it.id}" }) { o ->
-            OfferRow(o, Modifier.padding(horizontal = 12.dp, vertical = 3.dp))
+        itemsIndexed(browse.take(60), key = { _, o -> "b-${o.id}" }) { n, o ->
+            Box(Modifier.padding(horizontal = 12.dp, vertical = 3.dp).animateItem()) {
+                Appear(n) { OfferRow(o, onClick = { ListRepo.add(o.heading.lowercase().replaceFirstChar { it.uppercase() }) }) }
+            }
         }
 
         // ---- shops ----

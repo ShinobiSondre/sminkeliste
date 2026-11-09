@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -70,15 +71,14 @@ import com.sminkeliste.app.data.Profile
 import com.sminkeliste.app.util.tr
 
 private val QUICK_EN = listOf("Mascara", "Foundation", "Concealer", "Lipstick", "Lip gloss", "Primer", "Powder", "Blush", "Bronzer",
-    "Eyeliner", "Eyeshadow palette", "Brow pencil", "Setting spray", "Makeup remover", "Moisturizer", "Nail polish")
+    "Eyeliner", "Eyeshadow palette", "Brow pencil", "Setting spray", "Highlighter", "Lip liner", "Nail polish")
 private val QUICK_NO = listOf("Mascara", "Foundation", "Concealer", "Leppestift", "Lipgloss", "Primer", "Pudder", "Rouge", "Bronzer",
-    "Eyeliner", "Øyenskyggepalett", "Brynsblyant", "Setting spray", "Sminkefjerner", "Dagkrem", "Neglelakk")
+    "Eyeliner", "Øyenskyggepalett", "Brynsblyant", "Setting spray", "Highlighter", "Lipliner", "Neglelakk")
 
 @Composable
 fun ListScreen(onDeals: () -> Unit, onAdvice: () -> Unit) {
     val ctx = LocalContext.current
     var input by remember { mutableStateOf("") }
-    var openItem by remember { mutableStateOf<String?>(null) }
     var listMenu by remember { mutableStateOf(false) }
     var newList by remember { mutableStateOf(false) }
     val cur = ListRepo.items
@@ -125,6 +125,19 @@ fun ListScreen(onDeals: () -> Unit, onAdvice: () -> Unit) {
             }
         }
         item {
+            androidx.compose.animation.AnimatedVisibility(input.isNotBlank()) {
+                Surface(onClick = { PickerUi.show(input); input = "" }, modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                    shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(androidx.compose.material.icons.Icons.Filled.Search, null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Spacer(Modifier.width(8.dp))
+                        Text(tr("Find the exact product \"$input\" (with picture and prices)", "Finn nøyaktig produkt «$input» (med bilde og priser)"),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 14.sp)
+                    }
+                }
+            }
+        }
+        item {
             val quick = (if (com.sminkeliste.app.util.Lang.no) QUICK_NO else QUICK_EN).filter { q -> cur.none { it.name.equals(q, true) } }
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(quick) { q ->
@@ -147,7 +160,7 @@ fun ListScreen(onDeals: () -> Unit, onAdvice: () -> Unit) {
                     Modifier.padding(start = 20.dp, top = 14.dp, bottom = 6.dp), fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary)
             }
-            items(list, key = { it.id }) { ItemRow(it, onOpen = { openItem = it.id }) }
+            items(list, key = { it.id }) { Box(Modifier.animateItem()) { ItemRow(it, onOpen = { ItemUi.openId = it.id }) } }
         }
         if (open.isNotEmpty()) item {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -173,11 +186,10 @@ fun ListScreen(onDeals: () -> Unit, onAdvice: () -> Unit) {
                     TextButton(onClick = { ListRepo.clearChecked() }) { Text(tr("Clear", "Fjern")) }
                 }
             }
-            items(done, key = { it.id }) { ItemRow(it, onOpen = { openItem = it.id }) }
+            items(done, key = { it.id }) { Box(Modifier.animateItem()) { ItemRow(it, onOpen = { ItemUi.openId = it.id }) } }
         }
     }
 
-    openItem?.let { id -> ListRepo.item(id)?.let { ItemDialog(it, onClose = { openItem = null }, onAdvice = onAdvice) } ?: run { openItem = null } }
     if (newList) NameDialog(tr("New list", "Ny liste"), "", onClose = { newList = false }) { ListRepo.newList(it) }
     if (listMenu) ListMenu(onClose = { listMenu = false })
 }
@@ -185,7 +197,10 @@ fun ListScreen(onDeals: () -> Unit, onAdvice: () -> Unit) {
 @Composable
 private fun EmptyList() {
     Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("💄✨", fontSize = 44.sp)
+        val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "bob")
+        val y by t.animateFloat(0f, -10f, androidx.compose.animation.core.infiniteRepeatable(
+            androidx.compose.animation.core.tween(900), androidx.compose.animation.core.RepeatMode.Reverse), label = "y")
+        Text("💄✨", fontSize = 44.sp, modifier = Modifier.offset(y = y.dp))
         Spacer(Modifier.height(8.dp))
         Text(tr("Your list is empty", "Listen er tom"), fontWeight = FontWeight.Bold, fontSize = 18.sp)
         Text(tr("Add what you want or are running low on. You'll see when it's on sale near you.",
@@ -196,80 +211,40 @@ private fun EmptyList() {
 
 @Composable
 private fun ItemRow(item: Item, onOpen: () -> Unit) {
-    val ctx = LocalContext.current
-    val deals = if (item.checked) emptyList() else Deals.forItem(item.name)
-    val followed = Alerts.isFollowed(item.name)
+    val shop = if (item.checked) emptyList() else Deals.forItem(item.name)
+    if (!item.checked) androidx.compose.runtime.LaunchedEffect(item.searchName) { com.sminkeliste.app.data.WebPrices.load(item.searchName) }
+    val web = if (item.checked) null else com.sminkeliste.app.data.WebPrices.of(item.searchName)
+    val cat = Parse.categoryByKey(item.category)
     Surface(onClick = onOpen, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp).animateContentSize(),
         shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) {
         Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(item.checked, { ListRepo.toggle(item.id) },
                 colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary))
+            ProductThumb(item.exact?.image, cat?.emoji ?: "💄", 40)
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(item.name, fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                Text(item.exact?.name ?: item.name, fontSize = 15.sp, fontWeight = FontWeight.Medium, maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     textDecoration = if (item.checked) TextDecoration.LineThrough else null,
                     color = if (item.checked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
                 if (item.note.isNotBlank()) Text(item.note, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (!item.checked) {
-                    androidx.compose.runtime.LaunchedEffect(item.name) { com.sminkeliste.app.data.WebPrices.load(item.name) }
-                    com.sminkeliste.app.data.WebPrices.of(item.name)?.firstOrNull()?.let { w ->
-                        Text(tr("🌐 online from ${kr(w.price)} at ${w.shop}", "🌐 nett fra ${kr(w.price)} hos ${w.shop}"),
-                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                deals.minByOrNull { it.price }?.let { best ->
-                    Text(tr("🏷️ from ${kr(best.price)} at ${best.store}", "🏷️ fra ${kr(best.price)} hos ${best.store}") +
-                        if (deals.size > 1) tr(" · ${deals.size} deals", " · ${deals.size} tilbud") else "",
+                // Shop deal first, then the cheapest online price.
+                shop.minByOrNull { it.price }?.let { best ->
+                    Text(tr("🏬 ${kr(best.price)} at ${best.store}", "🏬 ${kr(best.price)} hos ${best.store}") +
+                        if (shop.size > 1) tr(" · ${shop.size} deals", " · ${shop.size} tilbud") else "",
                         fontSize = 12.sp, color = Sale, fontWeight = FontWeight.SemiBold)
                 }
+                web?.minByOrNull { it.price }?.let { w ->
+                    Text(tr("🌐 ${kr(w.price)} at ${w.shop}", "🌐 ${kr(w.price)} hos ${w.shop}") +
+                        if (w.prePrice != null) tr(" (on sale)", " (tilbud)") else "",
+                        fontSize = 12.sp, color = if (w.prePrice != null) Sale else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (item.exact == null && !item.checked) Text(tr("Tap to pick the exact product", "Trykk for å velge nøyaktig produkt"),
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
             }
-            if (!item.checked) IconButton(onClick = { Alerts.toggle(ctx, item.name) }) {
-                Icon(if (followed) Icons.Filled.Notifications else Icons.Filled.NotificationsNone,
-                    if (followed) tr("Stop deal alerts", "Slå av tilbudsvarsel") else tr("Tell me when it's on sale", "Si fra når det er på tilbud"),
-                    tint = if (followed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            if (!item.checked) FollowBell(item.searchName)
         }
     }
-}
-
-@Composable
-private fun ItemDialog(item: Item, onClose: () -> Unit, onAdvice: () -> Unit) {
-    val ctx = LocalContext.current
-    var name by remember(item.id) { mutableStateOf(item.name) }
-    var note by remember(item.id) { mutableStateOf(item.note) }
-    var cat by remember(item.id) { mutableStateOf(item.category) }
-    val deals = Deals.forItem(item.name)
-    AlertDialog(
-        onDismissRequest = onClose,
-        title = { Text(item.name) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text(tr("Product", "Produkt")) }, singleLine = true)
-                OutlinedTextField(note, { note = it }, Modifier.fillMaxWidth(), label = { Text(tr("Shade or note", "Nyanse eller notat")) },
-                    placeholder = { Text(tr("e.g. 120 Ivory", "f.eks. 120 Ivory")) }, singleLine = true)
-                ChoiceChips(Parse.CATEGORIES.map { com.sminkeliste.app.data.Opt(it.key, "${it.emoji} ${it.en}", "${it.emoji} ${it.no}") },
-                    setOfNotNull(cat)) { k -> cat = if (cat == k) null else k }
-                HorizontalDivider()
-                if (deals.isNotEmpty()) {
-                    Text(tr("On sale in shops near you", "På tilbud i butikker nær deg"), fontWeight = FontWeight.Bold)
-                    deals.take(4).forEach { OfferRow(it) }
-                } else Text(tr("No deals near you this week.", "Ingen tilbud nær deg denne uken."), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-                OnlinePrices(item.name, Modifier.padding(top = 4.dp))
-                TextButton(onClick = {
-                    AdviceUi.ask(ctx, Advice.dupes(item.name, AdviceUi.onSale()), tr("Cheaper alternatives to ${item.name}?", "Billigere alternativer til ${item.name}?"))
-                    onClose(); onAdvice()
-                }) {
-                    Icon(Icons.Filled.SwapHoriz, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
-                    Text(tr("Find cheaper alternatives (AI)", "Finn billigere alternativer (AI)"))
-                }
-                TextButton(onClick = { ListRepo.remove(item.id); onClose() }) {
-                    Icon(Icons.Filled.Delete, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error); Spacer(Modifier.width(6.dp))
-                    Text(tr("Remove", "Fjern"), color = MaterialTheme.colorScheme.error)
-                }
-            }
-        },
-        confirmButton = { Button(onClick = { ListRepo.edit(item.id, name, note, cat); onClose() }) { Text(tr("Save", "Lagre")) } },
-        dismissButton = { TextButton(onClick = onClose) { Text(tr("Close", "Lukk")) } },
-    )
 }
 
 @Composable

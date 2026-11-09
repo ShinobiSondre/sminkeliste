@@ -32,6 +32,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -49,8 +52,23 @@ import com.sminkeliste.app.util.tr
 /** The pink gradient header on top of each tab. */
 @Composable
 fun PinkHeader(title: String, subtitle: String, trailing: @Composable () -> Unit = {}) {
+    val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "glow")
+    val shift by t.animateFloat(0f, 1f, androidx.compose.animation.core.infiniteRepeatable(
+        androidx.compose.animation.core.tween(6000), androidx.compose.animation.core.RepeatMode.Reverse), label = "shift")
+    val twinkle by t.animateFloat(0f, 1f, androidx.compose.animation.core.infiniteRepeatable(
+        androidx.compose.animation.core.tween(1600), androidx.compose.animation.core.RepeatMode.Reverse), label = "twinkle")
+    val glow = Brush.linearGradient(listOf(Color(0xFFF783AC), Color(0xFFD6336C), Color(0xFFA61E4D)),
+        start = androidx.compose.ui.geometry.Offset(shift * 600f, 0f), end = androidx.compose.ui.geometry.Offset(600f + shift * 900f, 500f))
     Box(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)).background(PinkGlow)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)).background(glow)
+            .drawBehind {
+                // A few sparkles that fade in and out.
+                listOf(0.12f to 0.25f, 0.55f to 0.15f, 0.82f to 0.6f, 0.35f to 0.8f, 0.68f to 0.35f).forEachIndexed { i, (x, y) ->
+                    val a = if (i % 2 == 0) twinkle else 1f - twinkle
+                    drawCircle(Color.White.copy(alpha = 0.15f + 0.45f * a), radius = (2f + 2.5f * a) * density,
+                        center = androidx.compose.ui.geometry.Offset(size.width * x, size.height * y))
+                }
+            }
             .padding(start = 20.dp, end = 12.dp, top = 18.dp, bottom = 20.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

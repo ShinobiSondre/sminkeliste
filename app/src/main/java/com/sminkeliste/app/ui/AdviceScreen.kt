@@ -73,6 +73,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -101,8 +102,25 @@ object AdviceUi {
 
     fun ask(ctx: Context, prompt: String, shown: String) {
         val a = ctx as? Activity ?: return
+        photo = null
         ChatGptBridge.reset()
         ChatGptBridge.ask(a, prompt, shown, prompt)
+        open = true
+    }
+
+    /** The photo sent with the current conversation (shown at the top of the chat). */
+    var photo by mutableStateOf<Photo?>(null)
+
+    fun askPhoto(ctx: Context, p: Photo, goal: Advice.PhotoGoal, wish: String) {
+        val a = ctx as? Activity ?: return
+        photo = p
+        ChatGptBridge.reset()
+        val shown = when (goal) {
+            Advice.PhotoGoal.FACE -> tr("What makeup suits me? (photo)", "Hvilken sminke passer meg? (bilde)")
+            Advice.PhotoGoal.LOOK -> tr("How do I recreate this look? (photo)", "Hvordan får jeg denne looken? (bilde)")
+            Advice.PhotoGoal.PRODUCT -> tr("Which product is this? (photo)", "Hvilket produkt er dette? (bilde)")
+        } + if (wish.isNotBlank()) " – $wish" else ""
+        ChatGptBridge.askWithImage(a, Advice.photo(goal, wish, onSale()), shown, p.jpegBase64)
         open = true
     }
 
@@ -139,6 +157,7 @@ fun AdviceScreen(onEditProfile: () -> Unit) {
             if (turns.isNotEmpty()) FilledTonalButton(onClick = { AdviceUi.open = true }, modifier = Modifier.fillMaxWidth()) {
                 Text(tr("Back to the conversation", "Tilbake til samtalen"))
             }
+            PhotoSection()
             Section(tr("What suits me?", "Hva passer meg?")) {
                 Text(tr("Popular picks for your skin: budget, mid-range and luxury, with shades.",
                     "Populære valg for huden din: billig, mellom og luksus, med nyanseforslag."), fontSize = 13.sp,
@@ -252,7 +271,15 @@ fun AdviceChat(onClose: () -> Unit) {
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 14.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(entries, key = { it.key }) { e ->
                     when (e) {
-                        is AdviceEntry.Msg -> Bubble(e.text, mine = e.user)
+                        is AdviceEntry.Msg -> {
+                            val ph = AdviceUi.photo
+                            if (e.key == "m0" && ph != null) Column(horizontalAlignment = Alignment.End, modifier = Modifier.fillMaxWidth()) {
+                                androidx.compose.foundation.Image(ph.bitmap.asImageBitmap(), null,
+                                    Modifier.size(180.dp).clip(RoundedCornerShape(20.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                                Spacer(Modifier.height(6.dp))
+                                Bubble(e.text, mine = e.user)
+                            } else Bubble(e.text, mine = e.user)
+                        }
                         is AdviceEntry.Picks -> PickCards(e.picks)
                     }
                 }
@@ -329,7 +356,7 @@ private fun PickCards(picks: List<Pick>) {
                             Icon(if (followed) Icons.Filled.Notifications else Icons.Filled.NotificationsNone, null, Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
                             Text(if (followed) tr("Following", "Følger") else tr("Follow", "Følg"))
                         }
-                        TextButton(onClick = { openPriceSearch(ctx, p.name) }) { Text(tr("Prices", "Priser")) }
+                        TextButton(onClick = { PickerUi.show(p.name) }) { Text(tr("Find & prices", "Finn og priser")) }
                     }
                 }
             }
@@ -395,5 +422,53 @@ private fun markdown(s: String): AnnotatedString = buildAnnotatedString {
         if (heading != null) { withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = 17.sp)) { append(line.replace("**", "")) }; return@forEachIndexed }
         val parts = line.split("**")
         parts.forEachIndexed { j, p -> if (j % 2 == 1) withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(p) } else append(p) }
+    }
+}
+
+/** "Find makeup from a photo": your face (what suits you), a look to recreate, or a product to identify. */
+@Composable
+private fun PhotoSection() {
+    val ctx = LocalContext.current
+    var photo by remember { mutableStateOf<Photo?>(null) }
+    var goal by remember { mutableStateOf(Advice.PhotoGoal.FACE) }
+    var wish by remember { mutableStateOf("") }
+    val camUri = remember { Photos.cameraUri(ctx) }
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()) { uri -> if (uri != null) photo = Photos.load(ctx, uri) }
+    val take = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.TakePicture()) { ok -> if (ok) photo = Photos.load(ctx, camUri) }
+    val goals = listOf(
+        Opt(Advice.PhotoGoal.FACE.name, "My face: what suits me?", "Ansiktet mitt: hva passer?"),
+        Opt(Advice.PhotoGoal.LOOK.name, "A look to recreate", "En look jeg vil få til"),
+        Opt(Advice.PhotoGoal.PRODUCT.name, "Which product is this?", "Hvilket produkt er dette?"),
+    )
+    Section(tr("📸 Find makeup from a photo", "📸 Finn sminke fra et bilde")) {
+        Text(tr("Take or pick a photo. ChatGPT looks at it together with your skin profile and suggests makeup and shades.",
+            "Ta eller velg et bilde. ChatGPT ser på det sammen med hudprofilen din og foreslår sminke og nyanser."),
+            fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(8.dp))
+        androidx.compose.animation.AnimatedContent(photo, label = "photo") { ph ->
+            if (ph != null) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                androidx.compose.foundation.Image(ph.bitmap.asImageBitmap(), null, Modifier.size(200.dp).clip(RoundedCornerShape(24.dp)),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                IconButton(onClick = { photo = null }, modifier = Modifier.align(Alignment.TopEnd)) { Icon(Icons.Filled.Close, tr("Remove", "Fjern")) }
+            } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalButton(onClick = { runCatching { take.launch(camUri) } }, modifier = Modifier.weight(1f)) { Text(tr("📷 Take photo", "📷 Ta bilde")) }
+                FilledTonalButton(onClick = { pick.launch(androidx.activity.result.PickVisualMediaRequest(
+                    androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.weight(1f)) {
+                    Text(tr("🖼️ Pick photo", "🖼️ Velg bilde"))
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        ChoiceChips(goals, setOf(goal.name)) { goal = Advice.PhotoGoal.valueOf(it) }
+        OutlinedTextField(wish, { wish = it }, Modifier.fillMaxWidth().padding(top = 8.dp), singleLine = true,
+            placeholder = { Text(tr("Wishes, e.g. for a party, natural", "Ønsker, f.eks. til fest, naturlig")) })
+        Spacer(Modifier.height(8.dp))
+        Button(onClick = { photo?.let { AdviceUi.askPhoto(ctx, it, goal, wish) } }, enabled = photo != null, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.AutoAwesome, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(tr("Ask ChatGPT", "Spør ChatGPT"))
+        }
+        Text(tr("The photo is sent to ChatGPT. It's not saved in the app.", "Bildet sendes til ChatGPT. Det lagres ikke i appen."),
+            fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
     }
 }

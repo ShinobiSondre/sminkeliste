@@ -98,48 +98,69 @@ object Alerts {
     fun current(ctx: Context, name: String): List<Offer> =
         Parse.matchOffers(Parse.searchTerm(name), Flyers.cached(ctx), Deals.nowIso())
 
-    /** Checks everything you follow and notifies about deals not told about before. */
+    /**
+     * Checks everything you follow, in shops (this week's flyers) and online (Vita, Blush, Boots), and
+     * notifies about deals not told about before, and when the lowest online price drops.
+     */
     suspend fun check(ctx: Context) {
         init(ctx)
         if (follows.isEmpty()) return
         val loc = Settings.lastLocation(ctx)
-        val flyers = Flyers.near(ctx, loc?.first ?: Deals.FALLBACK_LAT, loc?.second ?: Deals.FALLBACK_LNG, Settings.radiusKm(ctx) * 1000)
-        if (flyers.isEmpty()) return
+        val flyers = runCatching {
+            Flyers.near(ctx, loc?.first ?: Deals.FALLBACK_LAT, loc?.second ?: Deals.FALLBACK_LNG, Settings.radiusKm(ctx) * 1000)
+        }.getOrDefault(emptyList())
         val now = Deals.nowIso()
         val p = prefs(ctx)
         val told = p.getStringSet("told", emptySet())!!.toMutableSet()
+        val edit = p.edit()
         follows.toList().forEach { f ->
-            val fresh = Parse.matchOffers(Parse.searchTerm(f.name), flyers, now).filter { "${f.id}:${it.id}" !in told }
-            if (fresh.isNotEmpty()) {
-                notify(ctx, f, fresh)
-                fresh.forEach { told += "${f.id}:${it.id}" }
+            val shop = Parse.matchOffers(Parse.searchTerm(f.name), flyers, now).filter { "${f.id}:${it.id}" !in told }
+            val web = runCatching { WebPrices.fetch(f.name) }.getOrDefault(emptyList())
+            val onSale = web.filter { (it.savingsPct ?: 0) > 0 && "${f.id}:w:${it.url}:${it.price}" !in told }
+            val lowest = web.minByOrNull { it.price }
+            val before = p.getFloat("low:${f.id}", 0f).toDouble()
+            val drop = lowest?.takeIf { before > 0 && it.price < before - 0.5 && "${f.id}:w:${it.url}:${it.price}" !in told }
+            if (lowest != null) edit.putFloat("low:${f.id}", lowest.price.toFloat())
+            if (shop.isNotEmpty() || onSale.isNotEmpty() || drop != null) {
+                notify(ctx, f, shop, (listOfNotNull(drop) + onSale).distinctBy { it.url }, drop?.let { before })
+                shop.forEach { told += "${f.id}:${it.id}" }
+                (onSale + listOfNotNull(drop)).forEach { told += "${f.id}:w:${it.url}:${it.price}" }
             }
         }
-        p.edit().putStringSet("told", told.toList().takeLast(600).toSet()).apply()
+        edit.putStringSet("told", told.toList().takeLast(800).toSet()).apply()
     }
 
     private fun price(v: Double) = "kr " + String.format(java.util.Locale("nb", "NO"), "%.2f", v)
 
-    private fun notify(ctx: Context, f: Follow, offers: List<Offer>) {
+    /** One notification per product: shop deals first, then online. */
+    private fun notify(ctx: Context, f: Follow, shop: List<Offer>, web: List<WebPrice>, droppedFrom: Double?) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val nm = ctx.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(
             NotificationChannel(CHANNEL, tr("Deals on things you follow", "Tilbud på det du følger"), NotificationManager.IMPORTANCE_DEFAULT))
-        val best = offers.minBy { it.price }
-        val pct = best.savingsPct?.takeIf { it in 1..95 }?.let { " (−$it %)" }.orEmpty()
         val open = PendingIntent.getActivity(ctx, f.id.hashCode(),
             Intent(ctx, MainActivity::class.java).putExtra(EXTRA_TAB, 1).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val style = NotificationCompat.InboxStyle()
-        offers.sortedBy { it.price }.take(5).forEach {
-            style.addLine("${it.store}: ${it.heading.lowercase().replaceFirstChar { c -> c.uppercase() }} · ${price(it.price)}")
+        shop.sortedBy { it.price }.take(4).forEach {
+            style.addLine("🏬 ${it.store}: ${price(it.price)}" + (it.savingsPct?.takeIf { p -> p in 1..95 }?.let { p -> " (−$p %)" } ?: ""))
         }
+        web.sortedBy { it.price }.take(4).forEach {
+            style.addLine("🌐 ${it.shop}: ${price(it.price)}" + (it.prePrice?.let { p -> tr(" (was ${price(p)})", " (før ${price(p)})") } ?: ""))
+        }
+        val title = when {
+            shop.isNotEmpty() -> tr("💄 ${f.name} is on sale in a shop near you", "💄 ${f.name} er på tilbud i butikk nær deg")
+            droppedFrom != null -> tr("💄 ${f.name} got cheaper online", "💄 ${f.name} har blitt billigere på nett")
+            else -> tr("💄 ${f.name} is on sale online", "💄 ${f.name} er på tilbud på nett")
+        }
+        val text = shop.minByOrNull { it.price }?.let { "${price(it.price)} ${tr("at", "hos")} ${it.store}" }
+            ?: web.minByOrNull { it.price }?.let { w ->
+                "${price(w.price)} ${tr("at", "hos")} ${w.shop}" + (droppedFrom?.let { tr(" (was ${price(it)})", " (var ${price(it)})") } ?: "")
+            }.orEmpty()
         val n = NotificationCompat.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_notify).setColor(0xFFD6336C.toInt())
-            .setContentTitle(tr("💄 ${f.name} is on sale", "💄 ${f.name} er på tilbud"))
-            .setContentText("${price(best.price)} ${tr("at", "hos")} ${best.store}$pct" +
-                if (offers.size > 1) tr(" · ${offers.size} deals", " · ${offers.size} tilbud") else "")
+            .setContentTitle(title).setContentText(text)
             .setStyle(style).setAutoCancel(true).setContentIntent(open).build()
         NotificationManagerCompat.from(ctx).notify(f.id.hashCode(), n)
     }

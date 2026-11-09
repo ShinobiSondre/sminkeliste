@@ -173,8 +173,47 @@ object ChatGptBridge {
     /** Which conversation is open (so reopening the chat continues it instead of asking again). */
     val session = MutableStateFlow<String?>(null)
 
+    /** A photo (JPEG, base64) to attach to the first question, or null. */
+    @Volatile private var pendingImage: String? = null
+
+    /**
+     * Starts a new conversation about a photo: ChatGPT opens empty, the photo is attached to its input
+     * box, and then [prompt] is typed in and sent.
+     */
+    fun askWithImage(a: Activity, prompt: String, shown: String, jpegBase64: String) {
+        session.value = "img:" + jpegBase64.hashCode() + prompt.hashCode()
+        firstQuestion = prompt
+        val w = webView(a) ?: run { fail("No window"); return }
+        turns.value = listOf(Turn(true, shown))
+        history = turns.value
+        sent.clear(); sent += firstQuestion
+        currentQ = prompt
+        pendingImage = jpegBase64
+        error.value = null
+        status.value = Status.THINKING
+        pageUrl.value = "https://chatgpt.com/"
+        freshLoad(w, "https://chatgpt.com/")
+    }
+
+    /** Puts the photo into ChatGPT's file input (or pastes it into the input box if there's no file input). */
+    private fun attachJs(b64: String): String =
+        "(function(b){try{var bin=atob(b);var u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);" +
+            "var f=new File([u],'bilde.jpg',{type:'image/jpeg'});var dt=new DataTransfer();dt.items.add(f);" +
+            "var inp=document.querySelector('input[type=\"file\"][accept*=\"image\"]')||document.querySelector('input[type=\"file\"]');" +
+            "if(inp){inp.files=dt.files;inp.dispatchEvent(new Event('change',{bubbles:true}));return 'input';}" +
+            "var e=document.querySelector('#prompt-textarea')||document.querySelector('textarea');" +
+            "if(e){e.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:dt}));return 'paste';}" +
+            "return 'none';}catch(x){return 'err '+x;}})('" + b64 + "')"
+
+    // Has the photo shown up in the input box (a preview), and is it still uploading?
+    private const val ATTACHED = "(function(){var c=document.querySelector('form')||document.body;" +
+        "var img=c.querySelector('img[src^=\"blob:\"],img[src^=\"data:\"],[data-testid*=\"attachment\"],[data-testid*=\"file-tile\"]');" +
+        "var busy=!!c.querySelector('[role=\"progressbar\"],circle[stroke-dasharray],.animate-spin');" +
+        "return JSON.stringify({img:!!img,busy:busy});})()"
+
     /** Starts a new conversation with [prompt] (the full question), shown in the chat as [shown]. */
     fun ask(a: Activity, prompt: String, shown: String, key: String) {
+        pendingImage = null
         if (session.value == key && turns.value.isNotEmpty() && status.value != Status.FAILED) return
         session.value = key
         val url = android.net.Uri.parse("https://chatgpt.com/").buildUpon().appendQueryParameter("q", prompt).build().toString()
@@ -245,6 +284,7 @@ object ChatGptBridge {
         // Typing into ChatGPT's page gets blocked by its log-in/cookie pop-ups for logged-out users,
         // so a follow-up goes the same way as the first question: a fresh ChatGPT link that carries
         // the video, the conversation so far and the new question. In the panel it's one chat.
+        pendingImage = null
         val q = followUpPrompt(send)
         turns.value = turns.value + Turn(true, shown)
         history = turns.value
@@ -290,7 +330,7 @@ object ChatGptBridge {
             "e.innerHTML=esc.split('\\n').map(function(l){return '<p>'+(l||'<br>')+'</p>';}).join('');" +
             "e.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:q}));}}" +
             "var tries=0;(function send(){var b=document.querySelector('[data-testid=\"send-button\"]')||document.querySelector('#composer-submit-button');" +
-            "if(b&&!b.disabled){b.click();return;}if(++tries<8)setTimeout(send,400);" +
+            "if(b&&!b.disabled){b.click();return;}if(++tries<30)setTimeout(send,400);" +
             "else e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,bubbles:true}));})();" +
             "return 'ok';})(${JSONObject.quote(text)})"
 
@@ -311,6 +351,8 @@ object ChatGptBridge {
             var nudges = 0
             var typed = false      // the question is typed in at most once (never twice into the chat)
             var snapshot = false   // one look at how the page is built, if no answer shows up
+            var attachedAt = 0L    // when the photo was put into ChatGPT's input box
+            var attachTries = 0
             while (true) {
                 delay(300)
                 val w = web ?: return@launch
@@ -335,8 +377,36 @@ object ChatGptBridge {
                         return@launch
                     }
                 } else {
-                    // The question is filled in but wasn't sent (happens when the page isn't on screen): press send.
                     val waited = System.currentTimeMillis() - t0
+                    // A photo question: attach the photo, wait until it's uploaded, then type the question.
+                    val img = pendingImage
+                    if (img != null && !typed) {
+                        if (attachedAt == 0L && o.optBoolean("input") && waited > 2_500 && attachTries < 6) {
+                            attachTries++
+                            val r = kotlinx.coroutines.suspendCancellableCoroutine<String?> { c -> w.evaluateJavascript(attachJs(img)) { c.resumeWith(Result.success(it)) } }
+                            log("ask", "attach photo: $r")
+                            if (r != null && (r.contains("input") || r.contains("paste"))) attachedAt = System.currentTimeMillis()
+                            else delay(1500)
+                        } else if (attachedAt > 0L) {
+                            val st = kotlinx.coroutines.suspendCancellableCoroutine<String?> { c -> w.evaluateJavascript(ATTACHED) { c.resumeWith(Result.success(it)) } }
+                            val j = runCatching { JSONObject(JSONTokener(st).nextValue() as String) }.getOrNull()
+                            val ready = j != null && j.optBoolean("img") && !j.optBoolean("busy")
+                            val since = System.currentTimeMillis() - attachedAt
+                            if ((ready && since > 2_000) || since > 15_000) {
+                                typed = true
+                                pendingImage = null
+                                log("ask", "photo ready=$ready after ${since / 1000.0} s – typing the question")
+                                w.evaluateJavascript(typeJs(currentQ), null)
+                            }
+                        } else if (attachTries >= 6 || waited > 25_000) {
+                            fail(com.sminkeliste.app.util.tr(
+                                "ChatGPT didn't accept the photo without logging in. Tap Open ChatGPT, log in once, and try again.",
+                                "ChatGPT tok ikke imot bildet uten innlogging. Trykk «Åpne ChatGPT», logg inn én gang og prøv igjen."))
+                            return@launch
+                        }
+                        continue
+                    }
+                    // The question is filled in but wasn't sent (happens when the page isn't on screen): press send.
                     // ChatGPT sends a question from the link by itself (usually within 2 s). Only if it's still
                     // sitting unsent and no conversation started after 10 s, press send (at most twice).
                     if (o.optInt("pending") > 0 && o.optInt("users") == 0 && waited > 10_000 && nudges < 2 &&
@@ -361,7 +431,7 @@ object ChatGptBridge {
                         snapshot = true
                         w.evaluateJavascript(PAGE_SHAPE) { r -> log("ask", "page shape: ${runCatching { JSONTokener(r).nextValue() as String }.getOrDefault(r)}") }
                     }
-                    if (waited > 45_000) {
+                    if (waited > (if (attachedAt > 0L) 80_000 else 45_000)) {
                         // What's blocking: a pop-up if there is one, else the end of the page (limits / log-in show there).
                         val dialog = o.optString("dialog").trim()
                         val tail = o.optString("tail").replace("\n", " ").replace(Regex("\\s+"), " ").trim().takeLast(220)

@@ -61,11 +61,7 @@ object Parse {
         Category("lips", "💄", "Lips", "Lepper", listOf("leppestift", "lipstick", "lipgloss", "lip gloss", "leppeglans", "lip liner", "lipliner",
             "leppepomade", "lip balm", "lip oil", "leppeolje", "lip", "leppe")),
         Category("nails", "💅", "Nails", "Negler", listOf("neglelakk", "nail polish", "negl", "nail", "gellakk", "topcoat", "base coat")),
-        Category("skin", "🧴", "Skincare", "Hudpleie", listOf("dagkrem", "nattkrem", "ansiktskrem", "fuktighetskrem", "moisturizer", "serum",
-            "sminkefjerner", "makeup remover", "micellar", "rensegel", "cleanser", "ansiktsvask", "toner", "ansiktsmaske", "face mask",
-            "solkrem", "spf", "øyekrem", "retinol", "niacinamide", "hyaluron")),
         Category("tools", "🖌️", "Tools", "Verktøy", listOf("sminkekost", "makeup brush", "sminkesvamp", "beauty blender", "vippebøyer", "pinsett")),
-        Category("scent", "🌷", "Perfume", "Parfyme", listOf("parfyme", "perfume", "eau de parfum", "eau de toilette", "edt", "edp", "body mist")),
     )
 
     /** Makeup and skincare brands you'll meet in Norwegian shops and flyers. */
@@ -80,13 +76,27 @@ object Parse {
         "covergirl", "max factor", "gosh copenhagen", "nuxe", "clarins", "shiseido", "artdeco", "pupa", "deborah",
     )
 
-    /** Other words that only show up on beauty offers. */
-    private val BEAUTY_WORDS = listOf("sminke", "makeup", "make-up", "kosmetikk", "cosmetics", "hudpleie", "skincare")
+    /** Brands that only make makeup, so their name alone says it's makeup. */
+    val MAKEUP_BRANDS = listOf(
+        "maybelline", "max factor", "rimmel", "nyx", "essence", "catrice", "isadora", "gosh", "gosh copenhagen", "sleek", "w7",
+        "makeup revolution", "l.a. girl", "la girl", "wet n wild", "e.l.f.", "elf", "mac", "benefit", "urban decay", "too faced", "nars",
+        "rare beauty", "fenty", "charlotte tilbury", "bobbi brown", "anastasia", "huda", "kiko", "milani", "colourpop", "covergirl",
+        "smashbox", "tarte", "zoeva", "real techniques", "sminkeriet", "artdeco", "pupa", "deborah", "physicians formula", "bourjois", "revlon",
+    )
+
+    /** Words that mean it's not makeup (food, hair, body, household …), even from a makeup brand's maker. */
+    private val NOT_MAKEUP = listOf("sjampo", "shampoo", "balsam", "conditioner", "dusj", "shower", "deodorant", "deo", "hårfarge", "hair",
+        "hår", "tannkrem", "bleie", "vask", "barbering", "body lotion", "bodylotion", "håndkrem", "solkrem", "parfyme", "perfume",
+        "dagkrem", "nattkrem", "serum", "rens", "sjokolade", "kaffe", "pizza", "kylling", "brus")
+
+    private val BEAUTY_WORDS = listOf("sminke", "makeup", "make-up")
 
     private fun rx(w: String) = Regex("(^|[^\\p{L}])" + Regex.escape(w) + "($|[^\\p{L}])")
     private val brandRx = BRANDS.distinct().map { it to rx(it) }
     private val catRx = CATEGORIES.map { c -> c to c.words.map { rx(it) } }
     private val beautyRx = BEAUTY_WORDS.map { rx(it) }
+    private val makeupBrandRx = MAKEUP_BRANDS.map { rx(it) }
+    private val notMakeupRx = NOT_MAKEUP.map { rx(it) }
 
     /** Which kind of thing this is ("Maybelline Sky High mascara" → eyes), or null if it doesn't say. */
     fun categoryOf(text: String): Category? {
@@ -104,11 +114,15 @@ object Parse {
         return brandRx.filter { it.second.containsMatchIn(t) }.maxByOrNull { it.first.length }?.first
     }
 
-    /** Is this flyer offer makeup or skincare? */
-    fun isBeauty(o: Offer): Boolean {
-        val t = (o.heading + " " + o.description).lowercase()
-        return brandOf(t) != null || categoryOf(o.heading) != null || beautyRx.any { it.containsMatchIn(t) }
+    /** Is this makeup (and only makeup: no food, skincare, hair or perfume)? */
+    fun isMakeup(text: String): Boolean {
+        val t = text.lowercase()
+        if (notMakeupRx.any { it.containsMatchIn(t) }) return false
+        return categoryOf(t) != null || makeupBrandRx.any { it.containsMatchIn(t) } || beautyRx.any { it.containsMatchIn(t) }
     }
+
+    /** Is this flyer offer makeup? */
+    fun isBeauty(o: Offer): Boolean = isMakeup(o.heading + " " + o.description)
 
     fun tjekOffers(json: String): List<Offer> {
         val arr = JSONArray(json)
@@ -247,10 +261,16 @@ object Parse {
         }
     }
 
+    /** The same product in different shops gets the same key ("Maybelline Lash Sensational Sky High Mascara Black" ≈ "… Mascara"). */
+    fun productKey(name: String): String =
+        name.lowercase().replace(Regex("[^\\p{L}\\p{N} ]"), " ").split(" ")
+            .filter { it.length >= 2 && it !in setOf("black", "sort", "ml", "new", "york", "the", "og", "and") && it.toDoubleOrNull() == null }
+            .distinct().sorted().joinToString(" ")
+
     /** The web shop products that are really what you searched for, cheapest first. */
     fun matchWeb(term: String, products: List<WebPrice>, limit: Int = 6): List<WebPrice> {
         val asOffers = products.mapIndexed { i, w -> Offer("$i", w.name, "", w.shop, w.price, w.prePrice, "NOK", "", w.image) }
-        val hit = matchOffers(term, asOffers, limit = 40).map { products[it.id.toInt()] }
+        val hit = matchOffers(term, asOffers, limit = 40).map { products[it.id.toInt()] }.filter { isMakeup(it.name) }
         return hit.sortedBy { it.price }.distinctBy { it.shop + "|" + it.name.lowercase() }.take(limit)
     }
 
@@ -330,7 +350,7 @@ object Parse {
             .take(limit).toList()
     }
 
-    /** Every makeup and skincare offer this week, biggest discount first (optionally of one kind). */
+    /** Every makeup offer this week, biggest discount first (optionally of one kind). */
     fun beautyOffers(offers: List<Offer>, nowIso: String = "", categoryKey: String? = null): List<Offer> =
         offers.asSequence()
             .filter { nowIso.isEmpty() || it.runTill.isEmpty() || it.runTill >= nowIso }

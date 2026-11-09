@@ -47,7 +47,7 @@ object Deals {
                     .onFailure { failedNow = true }.getOrDefault(emptyList())
                 val now = nowIso()
                 val res = items.distinctBy { it.name.lowercase() }.map { item ->
-                    ItemDeals(item.name, Parse.matchOffers(Parse.searchTerm(item.name), flyers, now))
+                    ItemDeals(item.name, Parse.matchOffers(Parse.searchTerm(item.searchName), flyers, now))
                 }
                 Triple(res, Parse.beautyOffers(flyers, now), failedNow)
             }

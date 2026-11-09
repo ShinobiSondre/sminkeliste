@@ -18,7 +18,7 @@ class ParseTest {
         assertEquals("lips", Parse.categoryOf("Lip liner")?.key)
         assertEquals("face", Parse.categoryOf("Foundation 120 Ivory")?.key)
         assertEquals("eyes", Parse.categoryOf("Øyenskyggepalett")?.key)
-        assertEquals("skin", Parse.categoryOf("Sminkefjerner")?.key)
+        assertNull(Parse.categoryOf("Dagkrem"))
         assertNull(Parse.categoryOf("Flip flops"))
     }
 
@@ -27,6 +27,12 @@ class ParseTest {
         assertTrue(Parse.isBeauty(offer("MASCARA", "Flere varianter")))
         assertFalse(Parse.isBeauty(offer("KYLLINGFILET", "Solvinge, 400 g")))
         assertFalse(Parse.isBeauty(offer("FLIP CHIPS")))
+        // Only makeup: no hair, body or skincare, even from big beauty brands.
+        assertFalse(Parse.isBeauty(offer("GARNIER FRUCTIS SJAMPO")))
+        assertFalse(Parse.isBeauty(offer("NIVEA DUSJSÅPE", "Nivea, 250 ml")))
+        assertFalse(Parse.isBeauty(offer("L'ORÉAL DAGKREM")))
+        assertTrue(Parse.isBeauty(offer("L'ORÉAL TELESCOPIC MASCARA")))
+        assertTrue(Parse.isBeauty(offer("ESSENCE", "Hele sortimentet")))
     }
 
     @Test fun matching() {
