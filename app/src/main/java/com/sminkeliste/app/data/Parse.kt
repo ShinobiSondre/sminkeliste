@@ -267,6 +267,20 @@ object Parse {
         }
     }
 
+    /** What the page reader (assets/extract.js) found: [{"n": name, "p": price, "o": before-price, "u": link, "i": picture}]. */
+    fun pageProducts(json: String, shop: String): List<WebPrice> {
+        val arr = runCatching { JSONArray(json) }.getOrNull() ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val name = o.optString("n").replace(Regex("\\s+"), " ").trim()
+            val price = o.optDouble("p", Double.NaN)
+            val url = o.optString("u")
+            if (name.length < 4 || price.isNaN() || price <= 0 || !url.startsWith("http")) return@mapNotNull null
+            WebPrice(shop, name, price, o.optDouble("o", Double.NaN).takeIf { !it.isNaN() && it > price }, url,
+                o.optString("i").takeIf { it.startsWith("http") })
+        }
+    }
+
     /** Blush / NordicFeel's search page: one product card per `<div id="product-…">`. */
     fun nordicfeelProducts(html: String): List<WebPrice> =
         html.split("<div id=\"product-").drop(1).mapNotNull { card ->
@@ -335,7 +349,7 @@ object Parse {
     /** The web shop products that are really what you searched for, cheapest first. */
     fun matchWeb(term: String, products: List<WebPrice>, limit: Int = 6): List<WebPrice> {
         val asOffers = products.mapIndexed { i, w -> Offer("$i", w.name, "", w.shop, w.price, w.prePrice, "NOK", "", w.image) }
-        val hit = matchOffers(term, asOffers, limit = 40).map { products[it.id.toInt()] }.filter { isMakeup(it.name) }
+        val hit = matchOffers(term, asOffers, limit = maxOf(80, limit * 2)).map { products[it.id.toInt()] }.filter { isMakeup(it.name) }
         return hit.sortedBy { it.price }.distinctBy { it.shop + "|" + it.name.lowercase() }.take(limit)
     }
 

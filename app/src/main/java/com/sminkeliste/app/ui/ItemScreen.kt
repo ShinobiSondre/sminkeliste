@@ -200,21 +200,17 @@ fun ProductPicker() {
         exit = slideOutVertically(tween(220)) { it / 4 } + fadeOut(tween(180))) {
         val scope = rememberCoroutineScope()
         var q by remember { mutableStateOf(PickerUi.query) }
-        var results by remember { mutableStateOf<List<Pair<WebPrice, List<WebPrice>>>?>(null) }
-        var loading by remember { mutableStateOf(false) }
-        fun search() {
-            if (q.isBlank()) return
-            loading = true
-            scope.launch { results = LiveSearch.run(q); loading = false }
-        }
+        fun search() { if (q.isNotBlank()) scope.launch { LiveSearch.run(q) } }
         // Searches by itself a moment after you stop typing.
+        var first by remember { mutableStateOf(true) }
         LaunchedEffect(q) {
             if (q.trim().length < 2) return@LaunchedEffect
-            kotlinx.coroutines.delay(if (results == null) 0L else 500L)
-            loading = true
-            results = LiveSearch.run(q)
-            loading = false
+            kotlinx.coroutines.delay(if (first) 0L else 500L)
+            first = false
+            LiveSearch.run(q)
         }
+        val results = LiveSearch.of(q)
+        val loading = LiveSearch.isBusy(q)
         fun pick(w: WebPrice) {
             val e = Exact(w.name, w.image, w.url, w.shop, w.price)
             val id = PickerUi.itemId
@@ -231,8 +227,8 @@ fun ProductPicker() {
                     shape = RoundedCornerShape(24.dp), leadingIcon = { Icon(Icons.Filled.Search, null) },
                     placeholder = { Text(tr("Brand and product, e.g. Maybelline Sky High", "Merke og produkt, f.eks. Maybelline Sky High")) },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { search() }))
-                Text(tr("From Vita, Lyko, Blush and Boots. Pick one, and deals and alerts are for exactly that product.",
-                    "Fra Vita, Lyko, Blush og Boots. Velg ett, så gjelder tilbud og varsler akkurat det produktet."),
+                Text(tr("From Vita, Lyko, Kicks, Blush, Boots, Fredrik & Louisa and Parfym.no. Pick one, and deals and alerts are for exactly that product.",
+                    "Fra Vita, Lyko, Kicks, Blush, Boots, Fredrik & Louisa og Parfym.no. Velg ett, så gjelder tilbud og varsler akkurat det produktet."),
                     Modifier.padding(horizontal = 20.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val names = remember(q) { Parse.suggest(q) }.filter { !it.equals(q.trim(), true) }
                 if (names.isNotEmpty()) androidx.compose.foundation.lazy.LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
@@ -243,19 +239,18 @@ fun ProductPicker() {
                         }
                     }
                 }
-                Surface(onClick = { WebUi.google(q) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                    Text(tr("🔎 Search all shops on Google (Kicks, Bangerhead …)", "🔎 Søk i alle butikker på Google (Kicks, Bangerhead …)"),
-                        Modifier.padding(12.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                }
+                if (loading) Text(tr("Searching ${WebPrices.shopCount} shops – more results come in as each one answers…",
+                    "Søker i ${WebPrices.shopCount} butikker – flere treff kommer etter hvert som hver butikk svarer …"),
+                    Modifier.padding(horizontal = 20.dp, vertical = 4.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                 HorizontalDivider(Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
                 val r = results
                 when {
-                    loading || r == null -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { repeat(5) { Shimmer() } }
+                    r.isNullOrEmpty() && loading -> Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { repeat(5) { Shimmer() } }
+                    r == null -> Unit
                     r.isEmpty() -> Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("🔍", fontSize = 40.sp)
-                        Text(tr("Not found at Vita, Lyko, Blush or Boots. Try a shorter name, or search all shops on Google above.",
-                            "Fant den ikke hos Vita, Lyko, Blush eller Boots. Prøv et kortere navn, eller søk i alle butikker på Google over."),
+                        Text(tr("Not found in ${WebPrices.shopCount} shops. Try the brand and a shorter name.",
+                            "Fant den ikke i ${WebPrices.shopCount} butikker. Prøv merket og et kortere navn."),
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     else -> LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -284,9 +279,7 @@ fun ProductPicker() {
                         }
                     }
                 }
-                if (loading) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(28.dp).padding(4.dp), strokeWidth = 2.dp)
-                }
+
             }
         }
     }

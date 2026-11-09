@@ -60,7 +60,7 @@ import com.sminkeliste.app.util.tr
 import kotlinx.coroutines.delay
 
 /** Web shops that also have physical shops in Norway. */
-private val ALSO_IN_SHOPS = setOf("Vita", "Boots")
+private val ALSO_IN_SHOPS = setOf("Vita", "Boots", "Kicks", "Fredrik & Louisa", "Lyko")
 
 /** One place to buy a product: a shop deal (from the flyers) or an online price. */
 sealed class Buy(val price: Double, val prePrice: Double?, val where: String, val image: String?, val title: String) {
@@ -94,8 +94,8 @@ fun WhereToBuy(searchName: String, itemName: String = searchName, modifier: Modi
             Appear(i) { BuyRow(b, best = b === cheapest && all.size > 1) }
         }
         when {
-            web == null -> { if (!webLabel) { Spacer(Modifier.height(4.dp)); Label("🌐 " + tr("Online", "På nett")) }; Shimmer(); Shimmer() }
-            web.isEmpty() -> Text(tr("🌐 Not found at Vita, Lyko, Blush or Boots", "🌐 Fant den ikke hos Vita, Lyko, Blush eller Boots"), fontSize = 13.sp,
+            web == null || (web.isEmpty() && WebPrices.isLoading(searchName)) -> { if (!webLabel) { Spacer(Modifier.height(4.dp)); Label("🌐 " + tr("Online", "På nett")) }; Shimmer(); Shimmer() }
+            web != null && web.isEmpty() -> Text(tr("🌐 Not found in ${WebPrices.shopCount} web shops", "🌐 Fant den ikke i ${WebPrices.shopCount} nettbutikker"), fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

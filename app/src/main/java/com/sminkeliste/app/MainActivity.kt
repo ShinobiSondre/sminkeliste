@@ -74,6 +74,7 @@ class MainActivity : ComponentActivity() {
         ListRepo.init(this)
         Alerts.init(this)
         StoreAlert.channels(this)
+        com.sminkeliste.app.data.ShopBrowser.attach(this)
         enableEdgeToEdge()
         handle(intent)
         Updater.start(this)

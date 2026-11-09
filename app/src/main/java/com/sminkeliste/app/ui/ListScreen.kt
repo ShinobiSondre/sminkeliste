@@ -128,8 +128,7 @@ fun ListScreen(onDeals: () -> Unit, onAdvice: () -> Unit) {
         }
         item {
             SuggestBox(input, onText = { input = it },
-                onProduct = { w -> ListRepo.addExact(com.sminkeliste.app.data.Exact(w.name, w.image, w.url, w.shop, w.price)); input = "" },
-                onGoogle = { q -> WebUi.google(q) })
+                onProduct = { w -> ListRepo.addExact(com.sminkeliste.app.data.Exact(w.name, w.image, w.url, w.shop, w.price)); input = "" })
         }
         item {
             val quick = (if (com.sminkeliste.app.util.Lang.no) QUICK_NO else QUICK_EN).filter { q -> cur.none { it.name.equals(q, true) } }

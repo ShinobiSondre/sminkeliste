@@ -50,7 +50,7 @@ import com.sminkeliste.app.data.ListRepo
 import com.sminkeliste.app.util.Http
 import com.sminkeliste.app.util.tr
 
-/** A web page shown inside the app (Google Shopping, a shop), with a button to put the product on the list. */
+/** A web page shown inside the app (a shop), with a button to put the product on the list. */
 object WebUi {
     var url by mutableStateOf<String?>(null); private set
     var title by mutableStateOf(""); private set
@@ -58,9 +58,6 @@ object WebUi {
     fun open(url: String, title: String, product: String = "") { this.url = url; this.title = title; this.product = product }
     fun close() { url = null }
 
-    /** Google Shopping for a product: every shop that sells it, with pictures and prices (Kicks, Lyko, Sephora …). */
-    fun google(product: String) = open("https://www.google.com/search?tbm=shop&hl=no&gl=no&q=" + Http.enc(product), "Google", product)
-}
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable

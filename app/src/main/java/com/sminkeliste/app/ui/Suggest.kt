@@ -45,15 +45,30 @@ import com.sminkeliste.app.data.WebPrices
 import com.sminkeliste.app.util.tr
 import kotlinx.coroutines.delay
 
-/** Live shop results while typing, kept so going back to a word you typed is instant. */
+/** Live shop results while typing (they fill in shop by shop), kept so going back to a word is instant. */
 object LiveSearch {
     val cache = mutableStateMapOf<String, List<Pair<WebPrice, List<WebPrice>>>>()
-    suspend fun run(q: String): List<Pair<WebPrice, List<WebPrice>>> {
+    private val busy = mutableStateMapOf<String, Boolean>()
+    fun of(q: String) = cache[Parse.searchTerm(q)]
+    fun isBusy(q: String) = busy[Parse.searchTerm(q)] == true
+    private val done = HashSet<String>()
+    suspend fun run(q: String) {
         val k = Parse.searchTerm(q)
-        cache[k]?.let { return it }
-        val r = runCatching { WebPrices.search(q) }.getOrDefault(emptyList())
-        cache[k] = r
-        return r
+        if (k.isBlank() || busy[k] == true || k in done) return
+        busy[k] = true
+        var finished = false
+        try {
+            cache[k] = WebPrices.search(q) { sofar -> cache[k] = sofar }
+            finished = true
+            done += k
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            finished = true; done += k
+        } finally {
+            busy.remove(k)
+            if (!finished) cache.remove(k) // stopped half-way (you kept typing): search again next time
+        }
     }
 }
 
@@ -62,18 +77,15 @@ object LiveSearch {
  * pause real products from the shops with picture and price.
  */
 @Composable
-fun SuggestBox(input: String, onText: (String) -> Unit, onProduct: (WebPrice) -> Unit, onGoogle: (String) -> Unit) {
+fun SuggestBox(input: String, onText: (String) -> Unit, onProduct: (WebPrice) -> Unit) {
     val names = remember(input) { Parse.suggest(input) }
-    var live by remember { mutableStateOf<List<Pair<WebPrice, List<WebPrice>>>?>(null) }
-    var searching by remember { mutableStateOf(false) }
     LaunchedEffect(input) {
-        live = null
         if (input.trim().length < 3) return@LaunchedEffect
         delay(450) // wait until you stop typing
-        searching = true
-        live = LiveSearch.run(input)
-        searching = false
+        LiveSearch.run(input)
     }
+    val live = if (input.trim().length >= 3) LiveSearch.of(input) else null
+    val searching = input.trim().length >= 3 && LiveSearch.isBusy(input)
     AnimatedVisibility(input.trim().length >= 2, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
         Column(Modifier.fillMaxWidth().padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (names.isNotEmpty()) LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -86,7 +98,7 @@ fun SuggestBox(input: String, onText: (String) -> Unit, onProduct: (WebPrice) ->
             }
             val l = live
             when {
-                searching && l == null -> Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Shimmer() }
+                searching && l.isNullOrEmpty() -> Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { Shimmer() }
                 l != null && l.isNotEmpty() -> Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     l.take(5).forEachIndexed { i, (best, all) ->
                         Appear(i) {
@@ -109,13 +121,11 @@ fun SuggestBox(input: String, onText: (String) -> Unit, onProduct: (WebPrice) ->
                     }
                 }
             }
-            if (input.trim().length >= 3 && !searching) Surface(onClick = { onGoogle(input.trim()) },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp), shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                Text(if (live?.isEmpty() == true) tr("Not in Vita, Lyko, Blush or Boots – search all shops on Google 🔎", "Ikke hos Vita, Lyko, Blush eller Boots – søk i alle butikker på Google 🔎")
-                    else tr("Search all shops on Google (Kicks, Sephora …) 🔎", "Søk i alle butikker på Google (Kicks, Bangerhead …) 🔎"),
-                    Modifier.padding(12.dp), fontSize = 13.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-            }
+            if (searching) Text(tr("Searching ${WebPrices.shopCount} shops…", "Søker i ${WebPrices.shopCount} butikker …"),
+                Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else if (live?.isEmpty() == true) Text(tr("Not found in ${WebPrices.shopCount} shops. Try the brand and a shorter name.",
+                "Fant den ikke i ${WebPrices.shopCount} butikker. Prøv merket og et kortere navn."),
+                Modifier.padding(horizontal = 16.dp), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

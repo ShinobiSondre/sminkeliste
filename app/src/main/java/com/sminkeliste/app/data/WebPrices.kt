@@ -11,7 +11,8 @@ import java.util.UUID
 
 /**
  * Today's online prices in the official beauty web shops, for comparing with the shop deals:
- * Vita and Lyko (their search pages), Blush (its search page) and Boots (its search service). Searched from the
+ * Vita and Lyko (their search pages), Blush (its search page), Boots (its search service), and through the
+ * invisible browser Kicks, Fredrik & Louisa and Parfym.no. Searched from the
  * phone, the same way the shop's own site does it, and kept for a few hours.
  */
 object WebPrices {
@@ -43,7 +44,8 @@ object WebPrices {
         synchronized(busy) { if (!busy.add(term)) return }
         try {
             gate.withPermit {
-                found[term] = Parse.matchWeb(term, all(term))
+                // The quick shops first; the browser shops add to the list as each one finishes.
+                all(term) { sofar -> found[term] = Parse.matchWeb(term, sofar, limit = 10) }
                 at[term] = System.currentTimeMillis()
             }
         } finally {
@@ -51,14 +53,28 @@ object WebPrices {
         }
     }
 
-    /** Everything the three shops' searches return for [term]. */
-    private suspend fun all(term: String): List<WebPrice> = coroutineScope {
-        listOf(
+    /** Shops searched, for the screen ("Searching 7 shops …"). */
+    val shopCount: Int get() = 4 + if (ShopBrowser.available) ShopBrowser.SHOPS.size else 0
+
+    /**
+     * Everything the shops' searches return for [term]. [progress] gets the list so far each time a shop
+     * answers (the quick ones together, then each browser shop), so the screen can fill in step by step.
+     */
+    private suspend fun all(term: String, progress: (List<WebPrice>) -> Unit = {}): List<WebPrice> = coroutineScope {
+        val got = java.util.Collections.synchronizedList(ArrayList<WebPrice>())
+        val quick = listOf(
             async { runCatching { vita(term) }.getOrDefault(emptyList()) },
             async { runCatching { blush(term) }.getOrDefault(emptyList()) },
             async { runCatching { boots(term) }.getOrDefault(emptyList()) },
             async { runCatching { lyko(term) }.getOrDefault(emptyList()) },
-        ).map { it.await() }.flatten()
+        )
+        val slow = if (ShopBrowser.available) ShopBrowser.SHOPS.map { shop ->
+            async { runCatching { ShopBrowser.search(shop, term) }.getOrDefault(emptyList()).also { r -> got.addAll(r); progress(got.toList()) } }
+        } else emptyList()
+        got.addAll(quick.map { it.await() }.flatten())
+        progress(got.toList())
+        slow.forEach { it.await() }
+        got.toList()
     }
 
     /** Online prices for one product, without touching the screen's state (for the background alert check). */
@@ -68,13 +84,15 @@ object WebPrices {
      * Products for the "pick the exact product" search: the shops' own results (makeup only), the same
      * product from several shops shown once, with its cheapest price.
      */
-    suspend fun search(query: String): List<Pair<WebPrice, List<WebPrice>>> {
+    suspend fun search(query: String, progress: (List<Pair<WebPrice, List<WebPrice>>>) -> Unit = {}): List<Pair<WebPrice, List<WebPrice>>> {
         val term = key(query)
         if (term.isBlank()) return emptyList()
-        val got = all(term).filter { Parse.isMakeup(it.name) }
-        val matched = Parse.matchWeb(term, got, limit = 60)
-        // Only real matches: when a shop doesn't have it, its search shows best-sellers instead, which aren't it.
-        val list = matched
+        return group(term, all(term) { sofar -> progress(group(term, sofar)) })
+    }
+
+    /** Only real matches (a shop that doesn't have it shows its best-sellers instead), the same product once. */
+    private fun group(term: String, got: List<WebPrice>): List<Pair<WebPrice, List<WebPrice>>> {
+        val list = Parse.matchWeb(term, got.filter { Parse.isMakeup(it.name) }, limit = 80)
         return list.groupBy { Parse.productKey(it.name) }.values
             .map { same -> same.minBy { it.price } to same.sortedBy { it.price } }
             .sortedBy { (best, _) -> list.indexOf(best) }

@@ -88,4 +88,14 @@ class WebShopTest {
         assertTrue(Parse.suggest("mac").contains("MAC Cosmetics") || Parse.suggest("mac").contains("MAC"))
         assertFalse(Parse.suggest("cera").any { it.contains("Cerave", true) })
     }
+
+    @Test fun pageReader() {
+        val json = """[{"n":"Maybelline New York Lash Sensational Sky High Mascara Very Black","p":149,"o":189,"u":"https://www.kicks.no/maybelline/sky-high","i":"https://www.kicks.no/i.jpg"},
+            {"n":"x","p":10,"u":"https://www.kicks.no/x"},{"n":"No link here","p":99,"u":""}]"""
+        val p = Parse.pageProducts(json, "Kicks")
+        assertEquals(1, p.size)
+        assertEquals("Kicks", p[0].shop)
+        assertEquals(149.0, p[0].price, 0.001)
+        assertEquals(189.0, p[0].prePrice!!, 0.001)
+    }
 }

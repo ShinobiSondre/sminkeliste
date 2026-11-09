@@ -151,16 +151,15 @@ fun OfferRow(o: Offer, modifier: Modifier = Modifier, onClick: (() -> Unit)? = n
     else Surface(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surface) { body() }
 }
 
-/** Official beauty web shops: (name, search address). Shops whose own search address isn't known go through a site search. */
-private fun site(domain: String) = "https://www.google.com/search?q=site%3A$domain+"
+/** Official beauty web shops: (name, search address). */
 val WEB_SHOPS = listOf(
     "Vita" to "https://www.vita.no/search?q=",
-    "Kicks" to site("kicks.no"),
+    "Kicks" to "https://www.kicks.no/sok?search-query=",
     "Lyko" to "https://lyko.com/no/sok?q=",
     "Blush" to "https://www.nordicfeel.com/no/search?q=",
-    "Apotek 1" to "https://www.apotek1.no/sok?q=",
-    "Boots" to site("boots.no"),
-    "Bangerhead" to site("bangerhead.no"),
+    "Fredrik & Louisa" to "https://fredrikoglouisa.no/sokeresultater/?searchterm=",
+    "Parfym.no" to "https://www.parfym.no/s?q=",
+    "Apotek 1" to "https://www.apotek1.no/soek/",
 )
 
 /** "Online prices": Prisjakt (every shop's price in one list) and the official web shops, one tap each. */
@@ -173,7 +172,7 @@ fun WebPriceLinks(product: String, modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            (listOf("Prisjakt" to "https://www.prisjakt.no/search?search=", "Google" to "https://www.google.com/search?tbm=shop&q=") + WEB_SHOPS).forEach { (name, url) ->
+            (listOf("Prisjakt" to "https://www.prisjakt.no/search?search=") + WEB_SHOPS).forEach { (name, url) ->
                 Surface(onClick = { WebUi.open(url + Http.enc(product), name, product) }, shape = RoundedCornerShape(50),
                     color = if (name == "Prisjakt") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh) {
                     Text(name, Modifier.padding(horizontal = 11.dp, vertical = 6.dp), fontSize = 12.sp,
