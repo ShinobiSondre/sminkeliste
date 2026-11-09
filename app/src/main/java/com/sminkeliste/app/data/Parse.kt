@@ -73,7 +73,14 @@ object Parse {
         "makeup revolution", "l.a. girl", "la girl", "physicians formula", "gosh", "idun", "lumene", "anastasia", "huda", "kiko",
         "sminkeriet", "vichy", "eucerin", "bioderma", "paula's choice", "inika", "zoeva", "real techniques",
         "tarte", "smashbox", "rituals", "the body shop", "lyko", "skin79", "cosrx", "beauty of joseon", "milani", "colourpop",
-        "covergirl", "max factor", "gosh copenhagen", "nuxe", "clarins", "shiseido", "artdeco", "pupa", "deborah",
+        "covergirl", "gosh copenhagen", "nuxe", "clarins", "shiseido", "artdeco", "pupa", "deborah",
+        "huda beauty", "house of hur", "hourglass", "laura mercier", "patrick ta", "makeup by mario", "kylie cosmetics", "glossier", "ilia",
+        "milk makeup", "pat mcgrath", "natasha denona", "rhode", "morphe", "bh cosmetics", "barry m", "bperfect", "sculpted by aimee",
+        "jan thomas", "glöd", "anastasia beverly hills", "benefit cosmetics", "mac cosmetics", "kosas", "tower 28", "saie", "westman atelier",
+        "fenty beauty", "idun minerals", "rimmel london", "nyx professional makeup", "l'oréal paris", "giorgio armani", "armani beauty",
+        "yves saint laurent", "givenchy", "guerlain", "tom ford", "sisley", "valentino beauty", "prada beauty", "dolce & gabbana",
+        "lancôme", "estée lauder", "clinique", "bobbi brown", "kiko milano", "ofra", "juvia's place", "danessa myricks", "about-face",
+        "haus labs", "r.e.m. beauty", "one/size", "makeup forever", "make up for ever", "urban decay", "too faced", "tarte", "smashbox",
     )
 
     /** Brands that only make makeup, so their name alone says it's makeup. */
@@ -82,6 +89,10 @@ object Parse {
         "makeup revolution", "l.a. girl", "la girl", "wet n wild", "e.l.f.", "elf", "mac", "benefit", "urban decay", "too faced", "nars",
         "rare beauty", "fenty", "charlotte tilbury", "bobbi brown", "anastasia", "huda", "kiko", "milani", "colourpop", "covergirl",
         "smashbox", "tarte", "zoeva", "real techniques", "sminkeriet", "artdeco", "pupa", "deborah", "physicians formula", "bourjois", "revlon",
+        "huda beauty", "huda", "house of hur", "hourglass", "laura mercier", "patrick ta", "makeup by mario", "kylie cosmetics", "glossier",
+        "milk makeup", "pat mcgrath", "natasha denona", "morphe", "bh cosmetics", "barry m", "bperfect", "sculpted by aimee", "jan thomas",
+        "anastasia beverly hills", "kosas", "tower 28", "saie", "westman atelier", "fenty beauty", "idun minerals", "kiko milano", "ofra",
+        "danessa myricks", "haus labs", "one/size", "make up for ever", "makeup forever",
     )
 
     /** Words that mean it's not makeup (food, hair, body, household …), even from a makeup brand's maker. */
@@ -211,24 +222,48 @@ object Parse {
         .replace(Regex("&#(\\d+);")) { it.groupValues[1].toInt().toChar().toString() }.trim()
 
     /** Vita's search page: the products are in `window.CURRENT_PAGE = {…}`. */
-    fun vitaProducts(html: String): List<WebPrice> {
+    fun vitaProducts(html: String): List<WebPrice> = avensiaProducts(html, "Vita", "https://www.vita.no")
+
+    /** Lyko's search page is built the same way as Vita's. */
+    fun lykoProducts(html: String): List<WebPrice> = avensiaProducts(html, "Lyko", "https://lyko.com")
+
+    /** The first "products" list anywhere in the page data whose entries have a name. */
+    private fun findProducts(o: Any?, depth: Int = 0): JSONArray? {
+        if (depth > 6) return null
+        when (o) {
+            is JSONObject -> {
+                o.optJSONArray("products")?.let { a -> if (a.length() > 0 && a.optJSONObject(0)?.has("displayName") == true) return a }
+                val keys = o.keys()
+                while (keys.hasNext()) { findProducts(o.opt(keys.next()), depth + 1)?.let { return it } }
+            }
+            is JSONArray -> for (i in 0 until minOf(o.length(), 50)) findProducts(o.opt(i), depth + 1)?.let { return it }
+        }
+        return null
+    }
+
+    /** Shops on the Avensia platform (Vita, Lyko) put the page's data in `window.CURRENT_PAGE = {…}`. */
+    fun avensiaProducts(html: String, shop: String, host: String): List<WebPrice> {
         val start = html.indexOf("window.CURRENT_PAGE")
         if (start < 0) return emptyList()
         val open = html.indexOf('{', start)
         val end = html.indexOf("</script>", open)
         if (open < 0 || end < 0) return emptyList()
         val json = html.substring(open, end).trim().trimEnd(';').trim()
-        val arr = runCatching { JSONObject(json).optJSONArray("products") }.getOrNull() ?: return emptyList()
+        val page = runCatching { JSONObject(json) }.getOrNull() ?: return emptyList()
+        val arr = page.optJSONArray("products")?.takeIf { it.length() > 0 } ?: findProducts(page) ?: return emptyList()
+        fun abs(u: String) = when { u.startsWith("http") -> u; u.startsWith("//") -> "https:$u"; u.startsWith("/") -> host + u; else -> "" }
         return (0 until arr.length()).mapNotNull { i ->
             val p = arr.optJSONObject(i) ?: return@mapNotNull null
-            val price = p.optJSONObject("price")
-            val now = price?.optJSONObject("current")?.optDouble("inclVat", Double.NaN) ?: Double.NaN
+            val price = p.optJSONObject("price") ?: return@mapNotNull null
+            // Vita: {"current": {"inclVat": 159}}, Lyko: {"current": 124.5}
+            val now = price.optJSONObject("current")?.optDouble("inclVat", Double.NaN) ?: price.optDouble("current", Double.NaN)
             if (now.isNaN() || now <= 0) return@mapNotNull null
-            val was = price?.optJSONObject("original")?.optDouble("inclVat", Double.NaN)?.takeIf { !it.isNaN() && it > now }
+            val was = (price.optJSONObject("original")?.optDouble("inclVat", Double.NaN)
+                ?: price.optJSONArray("comparisonPrices")?.optJSONObject(0)?.optDouble("value", Double.NaN))?.takeIf { !it.isNaN() && it > now }
             val name = p.optString("displayName").trim()
             if (name.isBlank()) return@mapNotNull null
             val img = p.optJSONArray("images")?.optJSONObject(0)?.optString("url").orEmpty()
-            WebPrice("Vita", name, now, was, "https://www.vita.no" + p.optString("url"), if (img.startsWith("/")) "https://www.vita.no$img" else null)
+            WebPrice(shop, name, now, was, abs(p.optString("url")), abs(img).ifBlank { null })
         }
     }
 
@@ -259,6 +294,36 @@ object Parse {
             WebPrice(shop, if (brand.isNotBlank() && !name.startsWith(brand, true)) "$brand $name" else name, price,
                 null, a["ProductURL"].orEmpty(), a["ThumbnailURL"] ?: a["ImageURL"])
         }
+    }
+
+    /** Brand names to show while typing, nicely written ("huda beauty" → "Huda Beauty"). */
+    fun brandTitle(b: String): String = b.split(" ").joinToString(" ") { w ->
+        when { w in setOf("mac", "nyx", "ysl", "w7", "elf", "e.l.f.", "bh") -> w.uppercase(); w == "l'oréal" -> "L'Oréal"; else -> w.replaceFirstChar { it.uppercase() } }
+    }
+
+    /**
+     * Suggestions while typing: brands that start with what you wrote, "brand + kind" ("huda bl" → "Huda Beauty Blush"),
+     * and kinds ("mas" → "Mascara"). The live shop results come on top of these in the app.
+     */
+    fun suggest(input: String, limit: Int = 8): List<String> {
+        val t = input.trim().lowercase()
+        if (t.length < 2) return emptyList()
+        val kinds = CATEGORIES.flatMap { it.words }.filter { it.length >= 4 && !it.contains("svamp") }.distinct()
+        val skincare = setOf("garnier", "nivea", "neutrogena", "la roche-posay", "la roche posay", "cerave", "the ordinary", "vichy", "eucerin",
+            "bioderma", "paula's choice", "rituals", "the body shop", "skin79", "cosrx", "beauty of joseon", "nuxe", "lyko", "loreal", "l'oreal")
+        val brands = (MAKEUP_BRANDS + BRANDS).distinct().filter { it.length >= 3 && it !in skincare }
+        val out = LinkedHashSet<String>()
+        // "brand kind…": the brand is written out, the rest is the start of a kind.
+        brands.sortedByDescending { it.length }.firstOrNull { t.startsWith("$it ") }?.let { b ->
+            val rest = t.removePrefix(b).trim()
+            kinds.filter { it.startsWith(rest) }.take(5).forEach { out += brandTitle(b) + " " + it.replaceFirstChar { c -> c.uppercase() } }
+        }
+        // Part of a brand name ("hud" → Huda Beauty), longest form of each brand.
+        brands.filter { b -> b.startsWith(t) || b.split(" ").any { it.startsWith(t) } }
+            .sortedWith(compareBy<String>({ !it.startsWith(t) }, { -it.length }))
+            .forEach { b -> if (out.none { it.lowercase().startsWith(b) || b.startsWith(it.lowercase()) }) out += brandTitle(b) }
+        kinds.filter { it.startsWith(t) }.forEach { out += it.replaceFirstChar { c -> c.uppercase() } }
+        return out.take(limit)
     }
 
     /** The same product in different shops gets the same key ("Maybelline Lash Sensational Sky High Mascara Black" ≈ "… Mascara"). */

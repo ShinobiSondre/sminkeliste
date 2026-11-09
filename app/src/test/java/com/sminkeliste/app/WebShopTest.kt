@@ -4,6 +4,8 @@ import com.sminkeliste.app.data.Parse
 import com.sminkeliste.app.data.WebPrice
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 /** The shops' pages and answers as they looked when probed (trimmed). */
@@ -61,5 +63,29 @@ class WebShopTest {
             WebPrice("Blush", "Maybelline Fit Me Foundation", 129.0, null, "u4", null),
         )
         assertEquals(listOf("u3", "u2"), Parse.matchWeb(Parse.searchTerm("Maybelline mascara"), all).map { it.url })
+    }
+
+    @Test fun lyko() {
+        val html = """<script>window.CURRENT_PAGE = {"searchPhrase":"huda blush","result":{"products":[{"url":"/no/house-of-hur/moist-ampoule-blusher-04","code":"4102-102-0004",
+            "displayName":"House of Hur Moist Ampoule Blusher 04 Lavender Flush","price":{"current":124.5,"comparisonPrices":[{"type":"withoutCampaign","value":166.0}],"currency":"NOK"},
+            "images":[{"height":2000,"width":1182,"url":"https://images.lyko.com/a/b.jpg"}]},
+            {"url":"/no/huda-beauty/blush-filter","displayName":"Huda Beauty Blush Filter Liquid Blush Peach Sorbet","price":{"current":299.0,"comparisonPrices":[]},"images":[{"url":"/i/c.jpg"}]}]}}; </script>"""
+        val p = Parse.lykoProducts(html)
+        assertEquals(2, p.size)
+        assertEquals(124.5, p[0].price, 0.001)
+        assertEquals(166.0, p[0].prePrice!!, 0.001)
+        assertEquals("https://lyko.com/no/house-of-hur/moist-ampoule-blusher-04", p[0].url)
+        assertEquals("https://lyko.com/i/c.jpg", p[1].image)
+        assertNull(p[1].prePrice)
+        // "huda blush" finds the Huda Beauty blush, not House of Hur.
+        assertEquals(listOf("Huda Beauty Blush Filter Liquid Blush Peach Sorbet"), Parse.matchWeb("huda blush", p).map { it.name })
+    }
+
+    @Test fun autofill() {
+        assertTrue(Parse.suggest("hud").contains("Huda Beauty"))
+        assertTrue(Parse.suggest("huda beauty bl").contains("Huda Beauty Blush"))
+        assertTrue(Parse.suggest("masc").contains("Mascara"))
+        assertTrue(Parse.suggest("mac").contains("MAC Cosmetics") || Parse.suggest("mac").contains("MAC"))
+        assertFalse(Parse.suggest("cera").any { it.contains("Cerave", true) })
     }
 }

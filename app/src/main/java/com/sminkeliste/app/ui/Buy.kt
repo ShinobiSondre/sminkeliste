@@ -95,7 +95,7 @@ fun WhereToBuy(searchName: String, itemName: String = searchName, modifier: Modi
         }
         when {
             web == null -> { if (!webLabel) { Spacer(Modifier.height(4.dp)); Label("🌐 " + tr("Online", "På nett")) }; Shimmer(); Shimmer() }
-            web.isEmpty() -> Text(tr("🌐 Not found at Vita, Blush or Boots", "🌐 Fant den ikke hos Vita, Blush eller Boots"), fontSize = 13.sp,
+            web.isEmpty() -> Text(tr("🌐 Not found at Vita, Lyko, Blush or Boots", "🌐 Fant den ikke hos Vita, Lyko, Blush eller Boots"), fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -117,7 +117,7 @@ fun BuyRow(b: Buy, best: Boolean = false) {
     val ctx = LocalContext.current
     val near = if (b is Buy.Web) NearShops.list.firstOrNull { Parse.sameChain(it.first.name, b.where) } else null
     Surface(
-        onClick = { when (b) { is Buy.Web -> openUrl(ctx, b.web.url); is Buy.Shop -> openUrl(ctx, "https://etilbudsavis.no") } },
+        onClick = { when (b) { is Buy.Web -> WebUi.open(b.web.url, b.web.shop); is Buy.Shop -> WebUi.open("https://etilbudsavis.no", "eTilbudsavis") } },
         modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp),
         color = if (best) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
     ) {

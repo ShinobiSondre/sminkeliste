@@ -156,7 +156,7 @@ private fun site(domain: String) = "https://www.google.com/search?q=site%3A$doma
 val WEB_SHOPS = listOf(
     "Vita" to "https://www.vita.no/search?q=",
     "Kicks" to site("kicks.no"),
-    "Lyko" to site("lyko.com/no"),
+    "Lyko" to "https://lyko.com/no/sok?q=",
     "Blush" to "https://www.nordicfeel.com/no/search?q=",
     "Apotek 1" to "https://www.apotek1.no/sok?q=",
     "Boots" to site("boots.no"),
@@ -173,8 +173,8 @@ fun WebPriceLinks(product: String, modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            (listOf("Prisjakt" to "https://www.prisjakt.no/search?search=") + WEB_SHOPS).forEach { (name, url) ->
-                Surface(onClick = { openUrl(ctx, url + Http.enc(product)) }, shape = RoundedCornerShape(50),
+            (listOf("Prisjakt" to "https://www.prisjakt.no/search?search=", "Google" to "https://www.google.com/search?tbm=shop&q=") + WEB_SHOPS).forEach { (name, url) ->
+                Surface(onClick = { WebUi.open(url + Http.enc(product), name, product) }, shape = RoundedCornerShape(50),
                     color = if (name == "Prisjakt") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh) {
                     Text(name, Modifier.padding(horizontal = 11.dp, vertical = 6.dp), fontSize = 12.sp,
                         fontWeight = if (name == "Prisjakt") FontWeight.Bold else FontWeight.Normal)
@@ -184,7 +184,7 @@ fun WebPriceLinks(product: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** Online prices in the official web shops (Vita, Blush, Boots), under the shop deals, plus links to the rest. */
+/** Online prices in the official web shops (Vita, Lyko, Blush, Boots), under the shop deals, plus links to the rest. */
 @Composable
 fun OnlinePrices(product: String, modifier: Modifier = Modifier, max: Int = 3) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -193,9 +193,9 @@ fun OnlinePrices(product: String, modifier: Modifier = Modifier, max: Int = 3) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(tr("🌐 Online prices", "🌐 Nettpriser"), fontWeight = FontWeight.Bold, fontSize = 14.sp)
         when {
-            list == null -> Text(tr("Checking Vita, Blush and Boots…", "Sjekker Vita, Blush og Boots …"), fontSize = 12.sp,
+            list == null -> Text(tr("Checking Vita, Lyko, Blush and Boots…", "Sjekker Vita, Lyko, Blush og Boots …"), fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            list.isEmpty() -> Text(tr("Not found at Vita, Blush or Boots.", "Fant den ikke hos Vita, Blush eller Boots."), fontSize = 12.sp,
+            list.isEmpty() -> Text(tr("Not found at Vita, Lyko, Blush or Boots.", "Fant den ikke hos Vita, Lyko, Blush eller Boots."), fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             else -> list.take(max).forEach { w ->
                 Surface(onClick = { openUrl(ctx, w.url) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp),

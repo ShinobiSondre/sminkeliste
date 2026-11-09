@@ -99,7 +99,7 @@ object Alerts {
         Parse.matchOffers(Parse.searchTerm(name), Flyers.cached(ctx), Deals.nowIso())
 
     /**
-     * Checks everything you follow, in shops (this week's flyers) and online (Vita, Blush, Boots), and
+     * Checks everything you follow, in shops (this week's flyers) and online (Vita, Lyko, Blush, Boots), and
      * notifies about deals not told about before, and when the lowest online price drops.
      */
     suspend fun check(ctx: Context) {

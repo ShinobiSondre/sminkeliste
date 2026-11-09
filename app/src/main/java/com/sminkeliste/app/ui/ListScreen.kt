@@ -127,17 +127,9 @@ fun ListScreen(onDeals: () -> Unit, onAdvice: () -> Unit) {
             }
         }
         item {
-            androidx.compose.animation.AnimatedVisibility(input.isNotBlank()) {
-                Surface(onClick = { PickerUi.show(input); input = "" }, modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp),
-                    shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Search, null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                        Spacer(Modifier.width(8.dp))
-                        Text(tr("Find the exact product \"$input\" (with picture and prices)", "Finn nøyaktig produkt «$input» (med bilde og priser)"),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 14.sp)
-                    }
-                }
-            }
+            SuggestBox(input, onText = { input = it },
+                onProduct = { w -> ListRepo.addExact(com.sminkeliste.app.data.Exact(w.name, w.image, w.url, w.shop, w.price)); input = "" },
+                onGoogle = { q -> WebUi.google(q) })
         }
         item {
             val quick = (if (com.sminkeliste.app.util.Lang.no) QUICK_NO else QUICK_EN).filter { q -> cur.none { it.name.equals(q, true) } }

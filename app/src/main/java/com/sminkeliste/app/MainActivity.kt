@@ -47,6 +47,8 @@ import com.sminkeliste.app.ui.ItemScreen
 import com.sminkeliste.app.ui.ItemUi
 import com.sminkeliste.app.ui.PickerUi
 import com.sminkeliste.app.ui.ProductPicker
+import com.sminkeliste.app.ui.WebScreen
+import com.sminkeliste.app.ui.WebUi
 import com.sminkeliste.app.ui.ListScreen
 import com.sminkeliste.app.ui.ProfileScreen
 import com.sminkeliste.app.ui.ProfileUi
@@ -83,8 +85,9 @@ class MainActivity : ComponentActivity() {
                 // Deals are checked by themselves: when the app opens and a moment after the lists change.
                 val openNames = ListRepo.open.map { it.name }.sorted().joinToString("|")
                 LaunchedEffect(openNames) { delay(1200); runDealsCheck(this@MainActivity) }
-                BackHandler(enabled = tab != 0 || StoreAlert.splash != null || AdviceUi.open || ProfileUi.open || PickerUi.open || ItemUi.openId != null) {
+                BackHandler(enabled = tab != 0 || StoreAlert.splash != null || AdviceUi.open || ProfileUi.open || PickerUi.open || ItemUi.openId != null || WebUi.url != null) {
                     when {
+                        WebUi.url != null -> WebUi.close()
                         ProfileUi.open -> ProfileUi.open = false
                         PickerUi.open -> PickerUi.close()
                         ItemUi.openId != null -> ItemUi.openId = null
@@ -130,6 +133,7 @@ class MainActivity : ComponentActivity() {
                     if (AdviceUi.open) AdviceChat(onClose = { AdviceUi.open = false })
                     ItemScreen(onAdvice = { tab = 2 })
                     ProductPicker()
+                    WebScreen()
                     InStoreSplash()
                     if (!Profile.done) ProfileScreen(first = true, onDone = { })
                     else if (ProfileUi.open) ProfileScreen(first = false, onDone = { ProfileUi.open = false })

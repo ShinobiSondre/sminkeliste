@@ -11,7 +11,7 @@ import java.util.UUID
 
 /**
  * Today's online prices in the official beauty web shops, for comparing with the shop deals:
- * Vita (its search page), Blush (its search page) and Boots (its search service). Searched from the
+ * Vita and Lyko (their search pages), Blush (its search page) and Boots (its search service). Searched from the
  * phone, the same way the shop's own site does it, and kept for a few hours.
  */
 object WebPrices {
@@ -57,6 +57,7 @@ object WebPrices {
             async { runCatching { vita(term) }.getOrDefault(emptyList()) },
             async { runCatching { blush(term) }.getOrDefault(emptyList()) },
             async { runCatching { boots(term) }.getOrDefault(emptyList()) },
+            async { runCatching { lyko(term) }.getOrDefault(emptyList()) },
         ).map { it.await() }.flatten()
     }
 
@@ -72,12 +73,16 @@ object WebPrices {
         if (term.isBlank()) return emptyList()
         val got = all(term).filter { Parse.isMakeup(it.name) }
         val matched = Parse.matchWeb(term, got, limit = 60)
-        val list = matched.ifEmpty { got }
+        // Only real matches: when a shop doesn't have it, its search shows best-sellers instead, which aren't it.
+        val list = matched
         return list.groupBy { Parse.productKey(it.name) }.values
             .map { same -> same.minBy { it.price } to same.sortedBy { it.price } }
             .sortedBy { (best, _) -> list.indexOf(best) }
             .take(40)
     }
+
+    private suspend fun lyko(term: String) =
+        Parse.lykoProducts(Http.get("https://lyko.com/no/sok?q=" + Http.enc(term), BROWSER, timeoutMs = 20000))
 
     private suspend fun vita(term: String) =
         Parse.vitaProducts(Http.get("https://www.vita.no/search?q=" + Http.enc(term), BROWSER, timeoutMs = 20000))
