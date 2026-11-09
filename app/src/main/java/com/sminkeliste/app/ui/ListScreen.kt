@@ -243,13 +243,10 @@ private fun ItemDialog(item: Item, onClose: () -> Unit, onAdvice: () -> Unit) {
                     setOfNotNull(cat)) { k -> cat = if (cat == k) null else k }
                 HorizontalDivider()
                 if (deals.isNotEmpty()) {
-                    Text(tr("On sale near you", "På tilbud nær deg"), fontWeight = FontWeight.Bold)
+                    Text(tr("On sale in shops near you", "På tilbud i butikker nær deg"), fontWeight = FontWeight.Bold)
                     deals.take(4).forEach { OfferRow(it) }
                 } else Text(tr("No deals near you this week.", "Ingen tilbud nær deg denne uken."), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-                TextButton(onClick = { openPriceSearch(ctx, item.name) }) {
-                    Text(tr("Compare web shop prices", "Sammenlign priser i nettbutikker")); Spacer(Modifier.width(4.dp))
-                    Icon(Icons.AutoMirrored.Filled.OpenInNew, null, Modifier.size(16.dp))
-                }
+                WebPriceLinks(listOf(item.name, item.note).filter { it.isNotBlank() }.joinToString(" "), Modifier.padding(top = 4.dp))
                 TextButton(onClick = {
                     AdviceUi.ask(ctx, Advice.dupes(item.name, AdviceUi.onSale()), tr("Cheaper alternatives to ${item.name}?", "Billigere alternativer til ${item.name}?"))
                     onClose(); onAdvice()
