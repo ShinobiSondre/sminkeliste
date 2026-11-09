@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.offset
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -129,7 +131,7 @@ fun ListScreen(onDeals: () -> Unit, onAdvice: () -> Unit) {
                 Surface(onClick = { PickerUi.show(input); input = "" }, modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp),
                     shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.primaryContainer) {
                     Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(androidx.compose.material.icons.Icons.Filled.Search, null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Icon(Icons.Filled.Search, null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
                         Spacer(Modifier.width(8.dp))
                         Text(tr("Find the exact product \"$input\" (with picture and prices)", "Finn nøyaktig produkt «$input» (med bilde og priser)"),
                             color = MaterialTheme.colorScheme.onPrimaryContainer, fontSize = 14.sp)
