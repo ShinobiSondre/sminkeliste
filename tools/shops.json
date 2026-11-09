@@ -1,16 +1,46 @@
 [
-  {"name": "Kicks", "url": "https://www.kicks.no/sok?q="},
-  {"name": "Bangerhead", "url": "https://www.bangerhead.no/sok?q="},
-  {"name": "Fredrik & Louisa", "url": "https://www.fredrikoglouisa.no/search?q="},
-  {"name": "Beautycos", "url": "https://www.beautycos.no/search?q="},
-  {"name": "Apotek 1", "url": "https://www.apotek1.no/sok?q="},
-  {"name": "Vitusapotek", "url": "https://www.vitusapotek.no/sok?q="},
-  {"name": "Parfym.no", "url": "https://www.parfym.no/search?q="},
-  {"name": "Notino", "url": "https://www.notino.no/search.asp?exps="},
-  {"name": "Lookfantastic", "url": "https://www.lookfantastic.no/search/?q="},
-  {"name": "Normal", "url": "https://www.normal.no/search?q="},
-  {"name": "Farmasiet", "url": "https://www.farmasiet.no/sok?q="},
-  {"name": "Sminkeriet", "url": "https://sminkeriet.no/search?q="},
-  {"name": "Boozt", "url": "https://www.boozt.com/no/no/search/result?search_keyword="},
-  {"name": "Eleven", "url": "https://www.eleven.no/search?q="}
+ {
+  "name": "Kicks",
+  "url": "https://www.kicks.no/sok?q="
+ },
+ {
+  "name": "Bangerhead",
+  "url": "https://www.bangerhead.no/sok?q="
+ },
+ {
+  "name": "Fredrik & Louisa",
+  "url": "https://www.fredrikoglouisa.no/search?q="
+ },
+ {
+  "name": "Beautycos",
+  "url": "https://www.beautycos.no/search?q="
+ },
+ {
+  "name": "Apotek 1",
+  "url": "https://www.apotek1.no/sok?q="
+ },
+ {
+  "name": "Vitusapotek",
+  "url": "https://www.vitusapotek.no/sok?q="
+ },
+ {
+  "name": "Parfym.no",
+  "url": "https://www.parfym.no/search?q="
+ },
+ {
+  "name": "Normal",
+  "url": "https://www.normal.no/search?q="
+ },
+ {
+  "name": "Farmasiet",
+  "url": "https://www.farmasiet.no/sok?q="
+ },
+ {
+  "name": "Sminkeriet",
+  "url": "https://sminkeriet.no/search?q="
+ },
+ {
+  "name": "Boozt",
+  "url": "https://www.boozt.com/no/no/search/result?search_keyword="
+ }
 ]

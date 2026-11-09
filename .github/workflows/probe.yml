@@ -9,4 +9,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: pip install playwright && python -m playwright install --with-deps chromium
-      - run: python tools/browser_probe.py "huda beauty blush" "maybelline mascara"
+      - run: python tools/browser_probe.py "maybelline mascara"
