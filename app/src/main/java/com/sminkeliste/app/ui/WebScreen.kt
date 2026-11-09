@@ -57,7 +57,7 @@ object WebUi {
     var product by mutableStateOf(""); private set
     fun open(url: String, title: String, product: String = "") { this.url = url; this.title = title; this.product = product }
     fun close() { url = null }
-
+}
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
