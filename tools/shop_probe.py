@@ -1,11 +1,21 @@
-# Probe 7: Lyko's search page structure (product name, brand, price, image, link).
-import re, urllib.request, urllib.parse
+# Probe 8: does Lyko's real page match what the app reads? (window.CURRENT_PAGE → a "products" list)
+import json, re, urllib.request, urllib.parse
 UA = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36"
-q = urllib.parse.quote("huda blush")
-def note(t, s): print(f"::notice title={t}::{str(s)[:1900]}")
-b = urllib.request.urlopen(urllib.request.Request(f"https://lyko.com/no/sok?q={q}", headers={"User-Agent": UA, "Accept-Language": "nb-NO"}), timeout=25).read().decode("utf-8", "replace")
-for k in ["window.__", "__APOLLO", "__INITIAL", "self.__next_f", "application/json", "\"products\"", "\"price\""]:
-    i = b.find(k)
-    if i >= 0: note(f"lyko key {k}", b[max(0, i-200): i+500].replace("\n", " "))
-for i, m in enumerate(list(re.finditer(r'(?i)huda', b))[:4]):
-    note(f"lyko near {i}", b[max(0, m.start()-700): m.end()+900].replace("\n", " "))
+def note(t, s): print(f"::notice title={t}::{str(s)[:1800]}")
+for q in ["huda blush", "fenty foundation", "rare beauty blush"]:
+    b = urllib.request.urlopen(urllib.request.Request("https://lyko.com/no/sok?q=" + urllib.parse.quote(q), headers={"User-Agent": UA, "Accept-Language": "nb-NO"}), timeout=25).read().decode("utf-8", "replace")
+    i = b.find("window.CURRENT_PAGE"); o = b.find("{", i); e = b.find("</script>", o)
+    try: page = json.loads(b[o:e].strip().rstrip(";").strip())
+    except Exception as x: note(f"lyko {q}", f"json error {x}"); continue
+    found = []
+    def walk(n, path, d=0):
+        if d > 6: return
+        if isinstance(n, dict):
+            p = n.get("products")
+            if isinstance(p, list) and p and isinstance(p[0], dict) and "displayName" in p[0]: found.append((path, p))
+            for k, v in n.items(): walk(v, path + "." + k, d + 1)
+        elif isinstance(n, list):
+            for j, v in enumerate(n[:50]): walk(v, f"{path}[{j}]", d + 1)
+    walk(page, "")
+    path, prods = found[0] if found else ("-", [])
+    note(f"lyko {q}", f"at {path}: " + str([(p.get("displayName"), (p.get("price") or {}).get("current"), p.get("url", "")[:40]) for p in prods[:6]]))
