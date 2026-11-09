@@ -209,6 +209,13 @@ private fun ItemRow(item: Item, onOpen: () -> Unit) {
                     textDecoration = if (item.checked) TextDecoration.LineThrough else null,
                     color = if (item.checked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
                 if (item.note.isNotBlank()) Text(item.note, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (!item.checked) {
+                    androidx.compose.runtime.LaunchedEffect(item.name) { com.sminkeliste.app.data.WebPrices.load(item.name) }
+                    com.sminkeliste.app.data.WebPrices.of(item.name)?.firstOrNull()?.let { w ->
+                        Text(tr("🌐 online from ${kr(w.price)} at ${w.shop}", "🌐 nett fra ${kr(w.price)} hos ${w.shop}"),
+                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 deals.minByOrNull { it.price }?.let { best ->
                     Text(tr("🏷️ from ${kr(best.price)} at ${best.store}", "🏷️ fra ${kr(best.price)} hos ${best.store}") +
                         if (deals.size > 1) tr(" · ${deals.size} deals", " · ${deals.size} tilbud") else "",
@@ -246,7 +253,7 @@ private fun ItemDialog(item: Item, onClose: () -> Unit, onAdvice: () -> Unit) {
                     Text(tr("On sale in shops near you", "På tilbud i butikker nær deg"), fontWeight = FontWeight.Bold)
                     deals.take(4).forEach { OfferRow(it) }
                 } else Text(tr("No deals near you this week.", "Ingen tilbud nær deg denne uken."), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-                WebPriceLinks(listOf(item.name, item.note).filter { it.isNotBlank() }.joinToString(" "), Modifier.padding(top = 4.dp))
+                OnlinePrices(item.name, Modifier.padding(top = 4.dp))
                 TextButton(onClick = {
                     AdviceUi.ask(ctx, Advice.dupes(item.name, AdviceUi.onSale()), tr("Cheaper alternatives to ${item.name}?", "Billigere alternativer til ${item.name}?"))
                     onClose(); onAdvice()

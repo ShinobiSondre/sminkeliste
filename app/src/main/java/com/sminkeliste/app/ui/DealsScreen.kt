@@ -118,16 +118,16 @@ fun DealsScreen() {
                 Text(d.item, Modifier.padding(start = 20.dp, top = 10.dp, bottom = 4.dp), fontWeight = FontWeight.Bold)
             }
             items(d.offers.take(3), key = { "i-${d.item}-${it.id}" }) { OfferRow(it, Modifier.padding(horizontal = 12.dp, vertical = 3.dp)) }
-            item(key = "w-${d.item}") { WebPriceLinks(d.item, Modifier.padding(start = 20.dp, end = 16.dp, top = 6.dp, bottom = 6.dp)) }
+            item(key = "w-${d.item}") { OnlinePrices(d.item, Modifier.padding(start = 20.dp, end = 16.dp, top = 6.dp, bottom = 6.dp)) }
         }
 
         val noDeals = ListRepo.open.filter { i -> mine.none { it.item.equals(i.name, true) } }.distinctBy { it.name.lowercase() }
         if (noDeals.isNotEmpty()) {
-            item { Title(tr("Not on sale in shops – check online", "Ikke på tilbud i butikk – sjekk nett")) }
+            item { Title(tr("Not on sale in shops – online prices", "Ikke på tilbud i butikk – nettpriser")) }
             items(noDeals, key = { "n-${it.id}" }) { i ->
                 Column(Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
                     Text(i.name, fontWeight = FontWeight.Bold)
-                    WebPriceLinks(i.name, Modifier.padding(top = 4.dp))
+                    OnlinePrices(i.name, Modifier.padding(top = 4.dp))
                 }
             }
         }

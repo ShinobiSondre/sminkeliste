@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.sminkeliste.app.data.Offer
 import com.sminkeliste.app.data.Opt
+import com.sminkeliste.app.data.WebPrices
 import com.sminkeliste.app.util.Http
 import com.sminkeliste.app.util.tr
 
@@ -149,7 +150,7 @@ val WEB_SHOPS = listOf(
 fun WebPriceLinks(product: String, modifier: Modifier = Modifier) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     Column(modifier) {
-        Text(tr("Compare online prices", "Sammenlign nettpriser"), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+        Text(tr("More web shops", "Flere nettbutikker"), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -161,6 +162,43 @@ fun WebPriceLinks(product: String, modifier: Modifier = Modifier) {
                 }
             }
         }
+    }
+}
+
+/** Online prices in the official web shops (Vita, Blush, Boots), under the shop deals, plus links to the rest. */
+@Composable
+fun OnlinePrices(product: String, modifier: Modifier = Modifier, max: Int = 3) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(product) { WebPrices.load(product) }
+    val list = WebPrices.of(product)
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(tr("🌐 Online prices", "🌐 Nettpriser"), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        when {
+            list == null -> Text(tr("Checking Vita, Blush and Boots…", "Sjekker Vita, Blush og Boots …"), fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            list.isEmpty() -> Text(tr("Not found at Vita, Blush or Boots.", "Fant den ikke hos Vita, Blush eller Boots."), fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            else -> list.take(max).forEach { w ->
+                Surface(onClick = { openUrl(ctx, w.url) }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer) {
+                    Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(Color.White), contentAlignment = Alignment.Center) {
+                            if (w.image != null) AsyncImage(w.image, null, Modifier.size(40.dp), contentScale = ContentScale.Fit) else Text("🌐")
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(w.name, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(w.shop + tr(" · online", " · nett"), fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(kr(w.price), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            w.prePrice?.let { Text(kr(it), fontSize = 11.sp, textDecoration = TextDecoration.LineThrough, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        }
+                    }
+                }
+            }
+        }
+        WebPriceLinks(product, Modifier.padding(top = 4.dp))
     }
 }
 

@@ -42,6 +42,11 @@ data class Shop(
 /** A kind of makeup or skincare, with the words that give it away. */
 data class Category(val key: String, val emoji: String, val en: String, val no: String, val words: List<String>)
 
+/** A product's price in an official web shop (Vita, Blush, Boots …). */
+data class WebPrice(val shop: String, val name: String, val price: Double, val prePrice: Double?, val url: String, val image: String?) {
+    val savingsPct: Int? get() = prePrice?.takeIf { it > price }?.let { (((it - price) / it) * 100).toInt() }
+}
+
 /** One product the AI suggested ("PRODUKT: … | KATEGORI: … | PRIS: … | HVORFOR: …"). */
 data class Pick(val name: String, val category: String, val price: String, val why: String)
 
@@ -176,6 +181,78 @@ object Parse {
 
     /** The answer without the machine lines (they become product cards). */
     fun display(answer: String): String = answer.replace(PICK_LINE, "").replace(Regex("\\n{3,}"), "\n\n").trim()
+
+    // ---- web shops ----
+
+    /** "1 234,50 kr" → 1234.5 */
+    fun priceText(t: String): Double? {
+        val c = t.replace(Regex("[\\s\u00A0]"), "").replace(Regex("[^0-9,.]"), "")
+        if (c.isBlank()) return null
+        val n = if (c.contains(",")) c.replace(".", "").replace(",", ".") else c
+        return n.toDoubleOrNull()?.takeIf { it > 0 }
+    }
+
+    private fun unescape(s: String) = s.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", "\"").replace("&#x27;", "'")
+        .replace("&lt;", "<").replace("&gt;", ">").replace(Regex("&#x([0-9A-Fa-f]+);")) { it.groupValues[1].toInt(16).toChar().toString() }
+        .replace(Regex("&#(\\d+);")) { it.groupValues[1].toInt().toChar().toString() }.trim()
+
+    /** Vita's search page: the products are in `window.CURRENT_PAGE = {…}`. */
+    fun vitaProducts(html: String): List<WebPrice> {
+        val start = html.indexOf("window.CURRENT_PAGE")
+        if (start < 0) return emptyList()
+        val open = html.indexOf('{', start)
+        val end = html.indexOf("</script>", open)
+        if (open < 0 || end < 0) return emptyList()
+        val json = html.substring(open, end).trim().trimEnd(';').trim()
+        val arr = runCatching { JSONObject(json).optJSONArray("products") }.getOrNull() ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val p = arr.optJSONObject(i) ?: return@mapNotNull null
+            val price = p.optJSONObject("price")
+            val now = price?.optJSONObject("current")?.optDouble("inclVat", Double.NaN) ?: Double.NaN
+            if (now.isNaN() || now <= 0) return@mapNotNull null
+            val was = price?.optJSONObject("original")?.optDouble("inclVat", Double.NaN)?.takeIf { !it.isNaN() && it > now }
+            val name = p.optString("displayName").trim()
+            if (name.isBlank()) return@mapNotNull null
+            val img = p.optJSONArray("images")?.optJSONObject(0)?.optString("url").orEmpty()
+            WebPrice("Vita", name, now, was, "https://www.vita.no" + p.optString("url"), if (img.startsWith("/")) "https://www.vita.no$img" else null)
+        }
+    }
+
+    /** Blush / NordicFeel's search page: one product card per `<div id="product-…">`. */
+    fun nordicfeelProducts(html: String): List<WebPrice> =
+        html.split("<div id=\"product-").drop(1).mapNotNull { card ->
+            val name = Regex("aria-label=\"([^\"]+)\"").find(card)?.groupValues?.get(1)?.let { unescape(it) } ?: return@mapNotNull null
+            val url = Regex("href=\"(https://www\\.nordicfeel\\.com/no/product/[^\"]+)\"").find(card)?.groupValues?.get(1) ?: return@mapNotNull null
+            val now = Regex("price__now\">([^<]+)<").find(card)?.groupValues?.get(1)?.let { priceText(it) } ?: return@mapNotNull null
+            val was = Regex("price__value\">[^<]*<span>([^<]+)<").find(card)?.groupValues?.get(1)?.let { priceText(it) }?.takeIf { it > now }
+            val img = Regex("<img[^>]*\\ssrc=\"(https://[^\"]+)\"").find(card)?.groupValues?.get(1)?.let { unescape(it) }
+            WebPrice("Blush", name, now, was, unescape(url), img)
+        }
+
+    /** Boots' search (Loop54): every product has a list of named attributes. */
+    fun loop54Products(json: String, shop: String = "Boots"): List<WebPrice> {
+        val items = JSONObject(json).optJSONObject("results")?.optJSONArray("items") ?: return emptyList()
+        return (0 until items.length()).mapNotNull { i ->
+            val attrs = items.optJSONObject(i)?.optJSONArray("attributes") ?: return@mapNotNull null
+            val a = HashMap<String, String>()
+            for (j in 0 until attrs.length()) {
+                val o = attrs.optJSONObject(j) ?: continue
+                o.optJSONArray("values")?.let { v -> if (v.length() > 0) a[o.optString("name")] = v.optString(0) }
+            }
+            val price = a["Price"]?.toDoubleOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
+            val name = a["Name"]?.trim().orEmpty().ifBlank { return@mapNotNull null }
+            val brand = a["Brand"].orEmpty()
+            WebPrice(shop, if (brand.isNotBlank() && !name.startsWith(brand, true)) "$brand $name" else name, price,
+                null, a["ProductURL"].orEmpty(), a["ThumbnailURL"] ?: a["ImageURL"])
+        }
+    }
+
+    /** The web shop products that are really what you searched for, cheapest first. */
+    fun matchWeb(term: String, products: List<WebPrice>, limit: Int = 6): List<WebPrice> {
+        val asOffers = products.mapIndexed { i, w -> Offer("$i", w.name, "", w.shop, w.price, w.prePrice, "NOK", "", w.image) }
+        val hit = matchOffers(term, asOffers, limit = 40).map { products[it.id.toInt()] }
+        return hit.sortedBy { it.price }.distinctBy { it.shop + "|" + it.name.lowercase() }.take(limit)
+    }
 
     // ---- matching ----
 
