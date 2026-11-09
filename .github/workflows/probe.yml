@@ -2,10 +2,11 @@ name: Probe web shops
 on:
   workflow_dispatch:
   push:
-    paths: [ "tools/shop_probe.py", ".github/workflows/probe.yml" ]
+    paths: [ "tools/**", "app/src/main/assets/extract.js", ".github/workflows/probe.yml" ]
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: python3 tools/shop_probe.py "maybelline mascara"
+      - run: pip install playwright && python -m playwright install --with-deps chromium
+      - run: python tools/browser_probe.py "huda beauty blush" "maybelline mascara"
